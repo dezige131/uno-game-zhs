@@ -236,8 +236,4 @@ yarn.lock
 *.old
 *.orig
 
-/binary/caddy_*
-/binary/node_*
-/binary/*.exe
-
 /release

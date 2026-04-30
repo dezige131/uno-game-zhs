@@ -1,20 +1,19 @@
 {
   "name": "uno",
   "version": "1.0.0",
-  "type": "module",
   "scripts": {
-    "start": "concurrently \"node server.js\" \"caddy run\"",
-    "dev": "concurrently \"pnpm run start:dev\" \"pnpm run serve\"",
-    "start:dev": "nodemon server.js",
+    "start": "node server.js",
+    "dev": "NODE_ENV=development nodemon server.js",
+    "start:dev": "NODE_ENV=development nodemon server.js",
     "serve": "vite",
     "preview": "vite preview",
     "test": "vitest",
     "test:run": "vitest run"
   },
   "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": "",
+  "author": "miruku (lovemilk)",
+  "license": "BSD-3-Clause",
+  "description": "UNO Game Server",
   "dependencies": {
     "ws": "^8.18.3"
   },
@@ -24,5 +23,17 @@
     "vite": "^5.0.0",
     "vitest": "^1.0.0",
     "jsdom": "^23.0.0"
+  },
+  "main": "server.js",
+  "bin": "server.js", 
+  "pkg": {
+    "scripts": [
+      "server.js"
+    ],
+    "assets": [
+      "index.html",
+      "client.js",
+      "style.css"
+    ]
   }
 }

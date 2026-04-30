@@ -68,8 +68,8 @@ A modern, real-time multiplayer UNO card game built with WebSockets, featuring b
    pnpm install -g pkg
    ```
 
-3. **Install Caddy**  
-   see <https://caddyserver.com/docs/install>
+<!-- 3. **Install Rcedit**  
+   see <https://github.com/electron/rcedit> -->
 
 4. **Start the game server**
 

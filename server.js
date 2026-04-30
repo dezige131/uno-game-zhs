@@ -1,7 +1,43 @@
-// import { WebSocketServer } from 'ws';
 const { WebSocketServer } = require('ws');
+const { Server } = require('http');
+const { readFileSync } = require('fs');
+const path = require('path')
 
-const wss = new WebSocketServer({ port: 59980 });
+const allowFiles = ['index.html', 'client.js', 'style.css']
+const files = {}
+
+for (const file of allowFiles) {
+    const fullPath = path.join(__dirname, file);
+    files[file] = readFileSync(fullPath);
+}
+
+const httpServer = new Server((req, res) => {
+    const url = req.url.toLowerCase();
+    const filename = url.slice(1)
+
+    if (url === '/') {
+        return res.end(files[allowFiles[0]])
+    }
+
+    if (!!filename && filename in files) {
+        return res.end(files[filename])
+    }
+})
+
+httpServer.on('upgrade', (request, socket, head) => {
+    const { pathname } = new URL(request.url, `http://${request.headers.host}`);
+
+    if (pathname === '/ws') {
+        wss.handleUpgrade(request, socket, head, (ws) => {
+            wss.emit('connection', ws, request);
+        });
+    } else {
+        socket.destroy();
+    }
+});
+
+// const wss = new WebSocketServer({ port: 59980 });
+const wss = new WebSocketServer({ noServer: true });
 
 const clients = new Map();
 const lobbies = new Map(); // Map of lobbyId -> lobby object
@@ -501,9 +537,33 @@ function handleLeave(lobbyId, playerId) {
     }
 }
 
+function hasFlagExitImmediately() {
+    return process.argv.includes('--exit-immediately') || process.argv.includes('-e');
+}
+
+function isDev() {
+    return process.env.NODE_ENV === 'development'
+}
+
 process.on('SIGINT', () => {
-    console.log('Server closed');
-    process.exit(0); 
+    process.stdout.write('\nServer closed')
+
+    if (!!process.stdin && !hasFlagExitImmediately() && !isDev()) {
+        console.log(', press any key to close this window...');
+        try {
+            process.stdin.setRawMode(true);
+            process.stdin.resume();
+            process.stdin.on('data', () => process.exit(0));
+        } catch(e) {
+            console.warn('cannot wait for any key')
+            console.error(e)
+            process.exit(0)
+        }
+    } else {
+        console.log()  // \n
+        process.exit(0)
+    }
 });
 
-console.log('Server started on port 59980');
+httpServer.listen(3000)
+console.log('Server started on port 3000');
