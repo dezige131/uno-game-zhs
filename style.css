@@ -660,10 +660,12 @@ h1 {
     flex-wrap: wrap;
 }
 
-#player-hand.disabled {
+body.player-action-disabled #player-hand,
+body.player-action-disabled #center-area {
     pointer-events: none;
     user-select: none;
     -webkit-user-select: none;
+    opacity: 0.6;
 }
 
 #opponent-hands .player {

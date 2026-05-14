@@ -124,7 +124,7 @@ function updateTurnIndicator() {
     if (currentTurn === -1 || !players.length) {
         turnText.textContent = '等待游戏开始...';
         turnIndicator.classList.remove('my-turn');
-        playerHandDiv.classList.add('disabled');
+        document.body.classList.add('player-action-disabled');
         return;
     }
 
@@ -135,11 +135,11 @@ function updateTurnIndicator() {
     if (isMyTurn) {
         turnText.textContent = 'YOU';
         turnIndicator.classList.add('my-turn');
-        playerHandDiv.classList.remove('disabled');
+        document.body.classList.remove('player-action-disabled');
     } else {
         turnText.textContent = `${currentPlayer ? currentPlayer.name : '-'}的回合`;
         turnIndicator.classList.remove('my-turn');
-        playerHandDiv.classList.add('disabled');
+        document.body.classList.add('player-action-disabled');
     }
 }
 

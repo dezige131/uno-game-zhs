@@ -3,12 +3,12 @@ const { Server } = require('http');
 const { readFileSync } = require('fs');
 const path = require('path')
 
-const allowFiles = ['index.html', 'client.js', 'style.css']
+const allowFiles = [['index.html', 'text/html'], ['client.js', 'text/javascript'], ['style.css', 'text/css']]
 const files = {}
 
-for (const file of allowFiles) {
+for (const [file, type] of allowFiles) {
     const fullPath = path.join(__dirname, file);
-    files[file] = readFileSync(fullPath);
+    files[file] = { content: readFileSync(fullPath), type }
 }
 
 const httpServer = new Server((req, res) => {
@@ -16,11 +16,15 @@ const httpServer = new Server((req, res) => {
     const filename = url.slice(1)
 
     if (url === '/') {
-        return res.end(files[allowFiles[0]])
+        const { content, type } = files[allowFiles[0][0]]
+        res.setHeader('Content-Type', type)
+        return res.end(content)
     }
 
     if (!!filename && filename in files) {
-        return res.end(files[filename])
+        const { content, type } = files[filename]
+        res.setHeader('Content-Type', type)
+        return res.end(content)
     }
 })
 
