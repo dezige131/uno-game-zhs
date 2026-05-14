@@ -39,7 +39,7 @@ function encodeUGC(content) {
 
 function connect() {
     const wsUrl = new URL('/ws', location.href)
-    wsUrl.protocol = wsUrl.protocol === 'https' ? 'wss' : 'ws'
+    wsUrl.protocol = wsUrl.protocol === 'https:' ? 'wss:' : 'ws:'
     ws = new WebSocket(wsUrl);
 
     ws.onopen = () => {
