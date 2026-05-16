@@ -1090,7 +1090,7 @@ body.player-action-disabled #center-area {
     height: 10px;
     pointer-events: none;
     z-index: 1001;
-    animation: confettiFall linear forwards;
+    animation: confettiFall linear both;
 }
 
 /* Dev Panel */

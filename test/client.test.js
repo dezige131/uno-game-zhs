@@ -89,7 +89,7 @@ describe('UNO Client', () => {
     
     const turnText = dom.window.document.getElementById('turn-text')
     expect(turnText).toBeTruthy()
-    expect(turnText.textContent.trim()).toBe('Waiting for game to start...')
+    expect(turnText.textContent.trim()).toBe('等待游戏开始...')
   })
 
   it('should have lobby info section', () => {

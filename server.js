@@ -44,7 +44,8 @@ httpServer.on('upgrade', (request, socket, head) => {
 const wss = new WebSocketServer({ noServer: true });
 
 const clients = new Map();
-const lobbies = new Map(); // Map of lobbyId -> lobby object
+const lobbies = new Map();
+const startedLobbies = new Set();
 
 function createLobby(lobbyId) {
     return {
@@ -67,9 +68,9 @@ function findOrCreateLobby(lobbyId) {
     return lobbies.get(lobbyId);
 }
 
-function generateLobbyId() {
-    return Math.random().toString(36).substring(2, 8).toUpperCase();
-}
+// function generateLobbyId() {
+//     return Math.random().toString(36).substring(2, 8).toUpperCase();
+// }
 
 function broadcastToLobby(lobbyId, message, excludeClientId = null) {
     [...clients.keys()].forEach((client) => {
@@ -149,6 +150,7 @@ function startGame(lobbyId) {
     if (!lobby) return;
 
     lobby.game.started = true;
+    startedLobbies.add(lobbyId);
     createDeck(lobbyId);
     shuffleDeck(lobbyId);
     dealCards(lobbyId);
@@ -198,12 +200,13 @@ function broadcastWin(lobbyId, winnerName) {
     });
 
     // Reset game state completely
-    lobby.players.length = 0; // Clear all players from lobby
+    lobby.players.length = 0;
     lobby.game.deck = [];
     lobby.game.discardPile = [];
     lobby.game.turn = 0;
     lobby.game.direction = 1;
     lobby.game.started = false;
+    startedLobbies.delete(lobbyId);
 }
 
 function broadcastGameAborted(lobbyId, excludePlayerId) {
@@ -230,6 +233,7 @@ function broadcastGameAborted(lobbyId, excludePlayerId) {
     lobby.game.turn = 0;
     lobby.game.direction = 1;
     lobby.game.started = false;
+    startedLobbies.delete(lobbyId);
 }
 
 function checkGameAborted(lobbyId, excludePlayerId) {
@@ -495,16 +499,23 @@ wss.on('connection', (ws) => {
             switch (message.action) {
                 case 'join': {
                     metadata.name = message.name;
-                    metadata.lobbyId = message.lobbyId || generateLobbyId();
-                    const lobby = findOrCreateLobby(metadata.lobbyId);
-
-                    // 对局中禁止加入
-                    if (lobby.game.started) {
+                    // metadata.lobbyId = message.lobbyId || generateLobbyId();
+                    if (typeof message.lobbyId !== 'string' || !message.lobbyId.length) {
                         ws.send(JSON.stringify({
                             action: 'error',
-                            message: '对局已开始，无法加入'
+                            message: '请提供大厅名称'
                         }));
-                        return;
+                        return
+                    }
+                    metadata.lobbyId = message.lobbyId;
+                    let lobby = findOrCreateLobby(metadata.lobbyId);
+
+                    if (startedLobbies.has(lobby.id)) {
+                        ws.send(JSON.stringify({
+                            action: 'error',
+                            message: '大厅已开始对局, 请使用其他名称'
+                        }));
+                        return
                     }
 
                     // 检查重名
