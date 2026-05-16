@@ -37,6 +37,53 @@ function encodeUGC(content) {
     return tempEl.innerHTML;
 }
 
+// Modal dialog helpers — replaces native alert/confirm
+const modalOverlay = document.getElementById('modal-overlay');
+const modalMessage = document.getElementById('modal-message');
+const modalOkBtn = document.getElementById('modal-ok-btn');
+const modalCancelBtn = document.getElementById('modal-cancel-btn');
+
+function showAlert(msg) {
+    return new Promise(resolve => {
+        modalCancelBtn.style.display = 'none';
+        modalMessage.textContent = msg;
+        modalOkBtn.textContent = '确定';
+        modalOverlay.classList.remove('hidden');
+        modalOverlay.style.display = 'flex';
+
+        function cleanup() {
+            modalOverlay.classList.add('hidden');
+            modalOverlay.style.display = '';
+            modalOkBtn.removeEventListener('click', onOk);
+            resolve();
+        }
+        function onOk() { cleanup(); }
+        modalOkBtn.addEventListener('click', onOk);
+    });
+}
+
+function showConfirm(msg) {
+    return new Promise(resolve => {
+        modalCancelBtn.style.display = '';
+        modalMessage.textContent = msg;
+        modalOkBtn.textContent = '确定';
+        modalOverlay.classList.remove('hidden');
+        modalOverlay.style.display = 'flex';
+
+        function cleanup(result) {
+            modalOverlay.classList.add('hidden');
+            modalOverlay.style.display = '';
+            modalOkBtn.removeEventListener('click', onOk);
+            modalCancelBtn.removeEventListener('click', onCancel);
+            resolve(result);
+        }
+        function onOk() { cleanup(true); }
+        function onCancel() { cleanup(false); }
+        modalOkBtn.addEventListener('click', onOk);
+        modalCancelBtn.addEventListener('click', onCancel);
+    });
+}
+
 function connect() {
     const wsUrl = new URL('/ws', location.href)
     wsUrl.protocol = wsUrl.protocol === 'https:' ? 'wss:' : 'ws:'
@@ -55,11 +102,11 @@ function connect() {
         }
 
         if (message.action === 'error') {
-            alert(message.message);
-            // Re-enable form inputs so user can try again
-            nameInput.disabled = false;
-            lobbyIdInput.disabled = false;
-            joinButton.disabled = false;
+            showAlert(message.message).then(() => {
+                nameInput.disabled = false;
+                lobbyIdInput.disabled = false;
+                joinButton.disabled = false;
+            });
             return;
         }
 
@@ -392,7 +439,7 @@ function toggleCardSelection(card, cardIndex, hand) {
         if (selectedCards.length === 0 || selectedCards[0].card.type === card.type) {
             selectedCards.push({ card, index: cardIndex });
         } else {
-            alert('只能选择相同类型的牌！');
+            showAlert('只能选择相同类型的牌！');
             return;
         }
     }
@@ -557,22 +604,22 @@ colorOptions.addEventListener('click', (e) => {
     }
 });
 
-joinButton.addEventListener('click', () => {
+joinButton.addEventListener('click', async () => {
     const name = nameInput.value.trim();
     const lobbyId = lobbyIdInput.value.trim().toUpperCase();
 
     if (!name) {
-        alert('请输入你的名称');
+        await showAlert('请输入你的名称');
         return;
     }
 
     if (name.length < 2) {
-        alert('名称至少需要 2 个字符');
+        await showAlert('名称至少需要 2 个字符');
         return;
     }
 
     if (name.length > 20) {
-        alert('名称不能超过 20 个字符');
+        await showAlert('名称不能超过 20 个字符');
         return;
     }
 
@@ -679,34 +726,12 @@ function createLeaveLobbyButton() {
     return leaveLobbyBtn;
 }
 
-function leaveLobby() {
-    if (confirm('确定要离开大厅吗？')) {
-        // Send leave message to server
-        sendMessage({ action: 'leave' });
-        // location.reload()
+async function leaveLobby() {
+    const confirmed = await showConfirm('确定要离开大厅吗？');
+    if (!confirmed) return;
 
-        requestAnimationFrame(() => resetGameState())
-
-        // // Reset to join form state
-        // showJoinForm();
-        // hideLobbyInfo();
-
-        // // Clear lobby data
-        // myLobbyId = null;
-        // // localStorage.removeItem('unoLobbyId');
-        // // localStorage.removeItem('unoPlayerName');
-
-        // // Clear players list
-        // playersList.innerHTML = '';
-
-        // // Re-enable form inputs
-        // nameInput.disabled = false;
-        // lobbyIdInput.disabled = false;
-        // joinButton.disabled = false;
-
-        // // Clear name input
-        // nameInput.value = (localStorage.getItem('unoPlayerName') || '').trim();
-    }
+    sendMessage({ action: 'leave' });
+    requestAnimationFrame(() => resetGameState())
 }
 
 function showJoinForm() {

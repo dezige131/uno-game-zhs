@@ -215,17 +215,21 @@ function broadcastGameAborted(lobbyId, excludePlayerId) {
     };
     broadcastToLobby(lobbyId, message, excludePlayerId);
 
-    // Reset game state but keep players for lobby
+    // Clear lobbyId from remaining clients so they're fully out of the lobby
+    [...clients.keys()].forEach((client) => {
+        const metadata = clients.get(client);
+        if (metadata.lobbyId === lobbyId && metadata.id !== excludePlayerId) {
+            metadata.lobbyId = null;
+        }
+    });
+
+    // Fully clean up lobby — players are gone, just like broadcastWin
+    lobby.players = [];
     lobby.game.deck = [];
     lobby.game.discardPile = [];
     lobby.game.turn = 0;
     lobby.game.direction = 1;
     lobby.game.started = false;
-    lobby.players.forEach(p => {
-        p.ready = false;
-        p.hand = undefined;
-        p.uno = false;
-    });
 }
 
 function checkGameAborted(lobbyId, excludePlayerId) {
@@ -493,6 +497,15 @@ wss.on('connection', (ws) => {
                     metadata.name = message.name;
                     metadata.lobbyId = message.lobbyId || generateLobbyId();
                     const lobby = findOrCreateLobby(metadata.lobbyId);
+
+                    // 对局中禁止加入
+                    if (lobby.game.started) {
+                        ws.send(JSON.stringify({
+                            action: 'error',
+                            message: '对局已开始，无法加入'
+                        }));
+                        return;
+                    }
 
                     // 检查重名
                     const existingPlayer = lobby.players.find(p => p.name.toLowerCase() === message.name.toLowerCase());
