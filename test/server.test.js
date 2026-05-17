@@ -105,6 +105,13 @@ describe('UNO Server', () => {
       })
     }
 
+    function sanitizePlayers(players) {
+      return players.map(p => {
+        const { hand, ...rest } = p
+        return { ...rest, cardCount: hand ? hand.length : 0 }
+      })
+    }
+
     function startGame(lobbyId) {
       const lobby = lobbies.get(lobbyId)
       if (!lobby) return
@@ -122,8 +129,9 @@ describe('UNO Server', () => {
       for (const [client, meta] of clients) {
         if (meta.lobbyId === lobbyId) {
           const player = lobby.players.find(p => p.id === meta.id)
+          if (!player) continue
           client.send(JSON.stringify({
-            action: 'start', players: lobby.players, discardPile: lobby.game.discardPile,
+            action: 'start', players: sanitizePlayers(lobby.players), discardPile: lobby.game.discardPile,
             turn: lobby.game.turn, hand: player.hand, id: meta.id
           }))
         }
@@ -156,8 +164,17 @@ describe('UNO Server', () => {
 
     function checkGameAborted(lobbyId, excludePlayerId) {
       const lobby = lobbies.get(lobbyId)
-      if (lobby && lobby.game.started && lobby.players.length < 2) {
+      if (!lobby || !lobby.game.started) return
+      const realPlayers = lobby.players.filter(p => !p.isAI)
+      if (lobby.players.length < 2 || realPlayers.length === 0) {
         broadcastGameAborted(lobbyId, excludePlayerId)
+      }
+    }
+
+    function checkStartGame(lobbyId) {
+      const lobby = lobbies.get(lobbyId)
+      if (lobby && lobby.players.length > 1 && lobby.players.every(p => p.ready)) {
+        startGame(lobbyId)
       }
     }
 
@@ -200,7 +217,7 @@ describe('UNO Server', () => {
         if (meta.lobbyId === lobbyId) {
           const player = lobby.players.find(p => p.id === meta.id)
           client.send(JSON.stringify({
-            action: 'update', players: lobby.players, discardPile: lobby.game.discardPile,
+            action: 'update', players: sanitizePlayers(lobby.players), discardPile: lobby.game.discardPile,
             turn: lobby.game.turn, hand: player ? player.hand : []
           }))
         }
@@ -225,6 +242,7 @@ describe('UNO Server', () => {
         lobby.players.splice(idx, 1)
         checkGameAborted(lobbyId, playerId)
         broadcastToLobby(lobbyId, { action: 'players', players: lobby.players, turn: lobby.game.turn, lobbyId }, playerId)
+        checkStartGame(lobbyId)
         if (lobby.players.length === 0) lobbies.delete(lobbyId)
       }
     }
@@ -254,8 +272,7 @@ describe('UNO Server', () => {
               ws.send(JSON.stringify({ action: 'error', message: '请提供大厅名称' }))
               return
             }
-            meta.lobbyId = message.lobbyId
-            let lobby = findOrCreateLobby(meta.lobbyId)
+            let lobby = findOrCreateLobby(message.lobbyId)
             if (startedLobbies.has(lobby.id)) {
               ws.send(JSON.stringify({ action: 'error', message: '大厅已开始对局, 请使用其他名称' }))
               return
@@ -264,6 +281,7 @@ describe('UNO Server', () => {
               ws.send(JSON.stringify({ action: 'error', message: '该大厅中已存在同名玩家，请选择其他名称' }))
               return
             }
+            meta.lobbyId = message.lobbyId
             lobby.players.push({ id: meta.id, name: meta.name, ready: false, isCreator: lobby.players.length === 0 })
             broadcastPlayers(meta.lobbyId)
             return
@@ -276,6 +294,39 @@ describe('UNO Server', () => {
             player.ready = !player.ready
             broadcastPlayers(meta.lobbyId)
             checkStartGame(meta.lobbyId)
+            return
+          }
+          case 'add_ai': {
+            const lobby = lobbies.get(meta.lobbyId)
+            const p = lobby && lobby.players.find(pl => pl.id === meta.id)
+            if (!p || !p.isCreator) { ws.send(JSON.stringify({ action: 'error', message: '只有房主可以邀请 AI' })); return }
+            if (startedLobbies.has(lobby.id)) { ws.send(JSON.stringify({ action: 'error', message: '对局已开始' })); return }
+            let idx = 1
+            while (lobby.players.some(pl => pl.name === `AI-${idx}`)) idx++
+            lobby.players.push({ id: uuidv4(), name: `AI-${idx}`, ready: false, isCreator: false, isAI: true })
+            broadcastPlayers(meta.lobbyId)
+            return
+          }
+          case 'ai_ready': {
+            const lobby = lobbies.get(meta.lobbyId)
+            const p = lobby && lobby.players.find(pl => pl.id === meta.id)
+            if (!p || !p.isCreator) { ws.send(JSON.stringify({ action: 'error', message: '只有房主可以准备 AI' })); return }
+            const ai = lobby.players.find(pl => pl.id === message.playerId && pl.isAI)
+            if (!ai) { ws.send(JSON.stringify({ action: 'error', message: 'AI 玩家未找到' })); return }
+            ai.ready = !ai.ready
+            broadcastPlayers(meta.lobbyId)
+            checkStartGame(meta.lobbyId)
+            return
+          }
+          case 'remove_ai': {
+            const lobby = lobbies.get(meta.lobbyId)
+            const p = lobby && lobby.players.find(pl => pl.id === meta.id)
+            if (!p || !p.isCreator) { ws.send(JSON.stringify({ action: 'error', message: '只有房主可以踢出 AI' })); return }
+            if (startedLobbies.has(lobby.id)) { ws.send(JSON.stringify({ action: 'error', message: '对局已开始' })); return }
+            const idx = lobby.players.findIndex(pl => pl.id === message.playerId && pl.isAI)
+            if (idx === -1) { ws.send(JSON.stringify({ action: 'error', message: 'AI 玩家未找到' })); return }
+            lobby.players.splice(idx, 1)
+            broadcastPlayers(meta.lobbyId)
             return
           }
           case 'play': handlePlay(meta.lobbyId, meta.id, message.card); return
@@ -294,6 +345,7 @@ describe('UNO Server', () => {
               lobby.players.splice(idx, 1)
               checkGameAborted(meta.lobbyId, meta.id)
               broadcastPlayers(meta.lobbyId)
+              checkStartGame(meta.lobbyId)
               if (lobby.players.length === 0) lobbies.delete(meta.lobbyId)
             }
           }
@@ -625,5 +677,169 @@ describe('UNO Server', () => {
     a.close()
     b.close()
     c.close()
+  })
+
+  it('reject join should not leak lobbyId to metadata', async () => {
+    const a = await trackedWs(port)
+    await a.next()
+    send(a.ws, { action: 'join', name: 'Alice', lobbyId: 'r' })
+    await a.next()
+
+    const b = await trackedWs(port)
+    await b.next()
+    send(b.ws, { action: 'join', name: 'Bob', lobbyId: 'r' })
+    await b.next()
+    await a.next()
+
+    send(a.ws, { action: 'ready' }); await a.next(); await b.next()
+    send(b.ws, { action: 'ready' }); await a.next(); await b.next()
+    await a.next(); await b.next()
+
+    // Game started. A third client tries to join — should be rejected.
+    const c = await trackedWs(port)
+    await c.next()
+    send(c.ws, { action: 'join', name: 'Eve', lobbyId: 'r' })
+    const err = await c.next()
+    expect(err.action).toBe('error')
+    expect(err.message).toContain('已开始')
+
+    // A leaves — game aborts. c should NOT receive game_aborted since join was rejected.
+    let cGotAbort = false
+    c.ws.once('message', () => { cGotAbort = true })
+
+    send(a.ws, { action: 'leave' })
+    await new Promise(r => setTimeout(r, 150))
+    expect(cGotAbort).toBe(false)
+    a.close()
+    b.close()
+    c.close()
+  })
+
+  it('add_ai requires creator', async () => {
+    const a = await trackedWs(port)
+    await a.next()
+    send(a.ws, { action: 'join', name: 'Alice', lobbyId: 'r' })
+    await a.next()
+
+    const b = await trackedWs(port)
+    await b.next()
+    send(b.ws, { action: 'join', name: 'Bob', lobbyId: 'r' })
+    await b.next()
+    await a.next()
+
+    send(b.ws, { action: 'add_ai' })
+    const err = await b.next()
+    expect(err.action).toBe('error')
+    expect(err.message).toContain('只有房主')
+    a.close()
+    b.close()
+  })
+
+  it('add_ai creates AI player', async () => {
+    const a = await trackedWs(port)
+    await a.next()
+    send(a.ws, { action: 'join', name: 'Alice', lobbyId: 'r' })
+    await a.next()
+
+    send(a.ws, { action: 'add_ai' })
+    const msg = await a.next()
+    expect(msg.action).toBe('players')
+    expect(msg.players).toHaveLength(2)
+    expect(msg.players[1].isAI).toBe(true)
+    expect(msg.players[1].name).toMatch(/^AI-/)
+    expect(msg.players[1].ready).toBe(false)
+    a.close()
+  })
+
+  it('ai_ready toggles AI player ready', async () => {
+    const a = await trackedWs(port)
+    await a.next()
+    send(a.ws, { action: 'join', name: 'Alice', lobbyId: 'r' })
+    await a.next()
+
+    send(a.ws, { action: 'add_ai' })
+    const addMsg = await a.next()
+    const aiId = addMsg.players[1].id
+
+    send(a.ws, { action: 'ai_ready', playerId: aiId })
+    const msg = await a.next()
+    expect(msg.players).toHaveLength(2)
+    expect(msg.players[1].ready).toBe(true)
+    a.close()
+  })
+
+  it('remove_ai kicks AI player', async () => {
+    const a = await trackedWs(port)
+    await a.next()
+    send(a.ws, { action: 'join', name: 'Alice', lobbyId: 'r' })
+    await a.next()
+
+    send(a.ws, { action: 'add_ai' })
+    const addMsg = await a.next()
+    const aiId = addMsg.players[1].id
+
+    send(a.ws, { action: 'remove_ai', playerId: aiId })
+    const msg = await a.next()
+    expect(msg.players).toHaveLength(1)
+    a.close()
+  })
+
+  it('start game with AI players', async () => {
+    const a = await trackedWs(port)
+    await a.next()
+    send(a.ws, { action: 'join', name: 'Alice', lobbyId: 'r' })
+    await a.next()
+
+    send(a.ws, { action: 'add_ai' })
+    const addMsg = await a.next()
+    const aiId = addMsg.players[1].id
+
+    const b = await trackedWs(port)
+    await b.next()
+    send(b.ws, { action: 'join', name: 'Bob', lobbyId: 'r' })
+    await b.next()
+    await a.next()
+
+    send(a.ws, { action: 'ready' }); await a.next(); await b.next()
+    send(b.ws, { action: 'ready' }); await a.next(); await b.next()
+    send(a.ws, { action: 'ai_ready', playerId: aiId }); await a.next(); await b.next()
+
+    const s1 = await a.next()
+    const s2 = await b.next()
+    expect(s1.action).toBe('start')
+    expect(s2.action).toBe('start')
+    expect(s1.players).toHaveLength(3)
+    expect(s1.players[2].cardCount).toBe(7)
+    a.close()
+    b.close()
+  })
+
+  it('start game not crash when player left before startGame loop', async () => {
+    const a = await trackedWs(port)
+    await a.next()
+    send(a.ws, { action: 'join', name: 'Alice', lobbyId: 'r' })
+    await a.next()
+
+    const b = await trackedWs(port)
+    await b.next()
+    send(b.ws, { action: 'join', name: 'Bob', lobbyId: 'r' })
+    await b.next()
+    await a.next()
+
+    // Both ready
+    send(a.ws, { action: 'ready' }); await a.next(); await b.next()
+    send(b.ws, { action: 'ready' }); await a.next(); await b.next()
+
+    // Bob closes BEFORE receiving start — simulates refresh
+    b.close()
+
+    // Alice should get start (or players if game didn't start)
+    // Game should start with just Alice since all remaining (only Alice) are ready and >= 2? No, >= 2 fails.
+    // So game should NOT start (only 1 player left), Bob left triggers checkStartGame but len=1.
+    // Actually after Bob's close, lobby has 1 player. checkStartGame returns (len > 1 fails).
+    // No crash should occur.
+    const msg = await a.next()
+    expect(msg.action).toMatch(/^(players|start)$/)
+    a.close()
   })
 })

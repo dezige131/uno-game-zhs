@@ -170,6 +170,7 @@ function startGame(lobbyId) {
         const metadata = clients.get(client);
         if (metadata.lobbyId === lobbyId) {
             const player = lobby.players.find(p => p.id === metadata.id);
+            if (!player) return;
             const message = {
                 action: 'start',
                 players: sanitizePlayersForClient(lobby.players),
@@ -248,7 +249,7 @@ function checkGameAborted(lobbyId, excludePlayerId) {
     const lobby = lobbies.get(lobbyId);
     if (!lobby || !lobby.game.started) return;
     const realPlayers = lobby.players.filter(p => !p.isAI);
-    if (realPlayers.length === 0) {
+    if (lobby.players.length < 2 || realPlayers.length === 0) {
         broadcastGameAborted(lobbyId, excludePlayerId);
     }
 }
@@ -303,7 +304,7 @@ function scheduleAIMove(lobbyId) {
     const currentPlayer = lobby.players[lobby.game.turn];
     if (currentPlayer && currentPlayer.isAI) {
         clearAITimeout(currentPlayer.id);
-        const delay = 800 + Math.random() * 1200;
+        const delay = 500 + Math.random() * 300;
         const timeout = setTimeout(() => performAIMove(lobbyId), delay);
         aiTimeouts.set(currentPlayer.id, timeout);
     }
@@ -820,6 +821,8 @@ wss.on('connection', (ws) => {
 
                     broadcastPlayers(metadata.lobbyId);
 
+                    checkStartGame(metadata.lobbyId);
+
                     if (lobby.players.length === 0) {
                         lobbies.delete(metadata.lobbyId);
                     }
@@ -856,6 +859,8 @@ function handleLeave(lobbyId, playerId) {
             turn: lobby.game.turn,
             lobbyId: lobbyId
         }, playerId);
+
+        checkStartGame(lobbyId);
         console.log('player leaved from', lobby.id, ':', player)
 
         // If lobby is empty, we could optionally remove it
