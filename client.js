@@ -20,6 +20,7 @@ const inviteAIBtn = document.getElementById('invite-ai');
 const reactionTextInput = document.getElementById('reaction-text-input');
 const reactionSendBtn = document.getElementById('reaction-send-btn');
 const reactionEmojis = document.getElementById('reaction-emojis');
+const cardLayoutToggle = document.getElementById('card-layout-toggle');
 
 let myId;
 let ws;
@@ -136,6 +137,7 @@ function connect() {
             myHand = message.hand;
             updatePlayers(message.players, message.turn);
             updateHand(message.hand);
+            applyCardLayout();
             updateDiscardPile(message.discardPile);
             updateTurnIndicator();
         }
@@ -147,6 +149,7 @@ function connect() {
             myHand = message.hand;
             updatePlayers(message.players, message.turn);
             updateHand(message.hand);
+            applyCardLayout();
             updateDiscardPile(message.discardPile);
             updateTurnIndicator();
         }
@@ -378,6 +381,17 @@ function updatePlayers(players, turn) {
             li.appendChild(actionsDiv);
         }
 
+        // Transfer creator button for non-AI non-creator players (visible to creator)
+        if (me && me.isCreator && !player.isAI && !player.isCreator && player.id !== myId) {
+            const transferBtn = document.createElement('button');
+            transferBtn.textContent = '转让房主';
+            transferBtn.classList.add('transfer-creator-btn');
+            transferBtn.addEventListener('click', () => {
+                sendMessage({ action: 'transfer_creator', playerId: player.id });
+            });
+            li.appendChild(transferBtn);
+        }
+
         playersList.appendChild(li);
     }
 
@@ -392,6 +406,7 @@ function updatePlayers(players, turn) {
 }
 
 function updateHand(hand) {
+    const cardControls = playerHandDiv.querySelector('#card-controls');
     playerHandDiv.innerHTML = '';
 
     for (let i = 0; i < hand.length; i++) {
@@ -424,6 +439,8 @@ function updateHand(hand) {
         cancelButton.addEventListener('click', clearSelection);
         playerHandDiv.appendChild(cancelButton);
     }
+
+    if (cardControls) playerHandDiv.appendChild(cardControls);
 }
 
 function handleCardClick(card, cardIndex, hand) {
@@ -746,6 +763,23 @@ function copyLobbyId() {
     }
 }
 
+function applyCardLayout() {
+    if (localStorage.getItem('unoCardLayout') === 'scroll') {
+        playerHandDiv.classList.add('scroll-mode');
+        cardLayoutToggle.textContent = '切换到换行排列';
+    } else {
+        playerHandDiv.classList.remove('scroll-mode');
+        cardLayoutToggle.textContent = '切换到滚动排列';
+    }
+}
+
+cardLayoutToggle.addEventListener('click', () => {
+    playerHandDiv.classList.toggle('scroll-mode');
+    const isScroll = playerHandDiv.classList.contains('scroll-mode');
+    localStorage.setItem('unoCardLayout', isScroll ? 'scroll' : 'wrap');
+    cardLayoutToggle.textContent = isScroll ? '切换到换行排列' : '切换到滚动排列';
+});
+
 function sendReactionText() {
     const text = reactionTextInput.value.trim();
     if (!text) return;
@@ -896,13 +930,16 @@ function showReaction(playerId, type, content) {
     if (playerDiv) {
         playerDiv.appendChild(popup);
     } else {
-        // Self reaction: append to opponent-hands container
-        popup.style.position = 'fixed';
-        popup.style.bottom = '120px';
-        popup.style.left = '50%';
-        popup.style.transform = 'translateX(-50%)';
-        popup.style.animation = 'reactionFloatUp 1.5s ease-out forwards';
-        document.body.appendChild(popup);
+        // Self reaction: show above reaction bar
+        const reactionBar = document.getElementById('reaction-bar');
+        if (reactionBar) {
+            popup.style.position = 'absolute';
+            popup.style.bottom = '100%';
+            popup.style.left = '50%';
+            popup.style.transform = 'translateX(-50%)';
+            popup.style.animation = 'reactionFloatUp 1.5s ease-out forwards';
+            reactionBar.appendChild(popup);
+        }
     }
 
     popup.addEventListener('animationend', () => popup.remove(), { once: true });

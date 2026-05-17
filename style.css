@@ -197,6 +197,30 @@ h1 {
     border-color: #ff6b6b;
 }
 
+#lobby #players .transfer-creator-btn {
+    width: auto;
+    margin: 0 0 0 auto;
+    background: transparent;
+    color: #a0aec0;
+    border: 1px solid #374151;
+    padding: 2px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.75rem;
+    font-weight: normal;
+    white-space: nowrap;
+    line-height: 1.5;
+    text-transform: none;
+    letter-spacing: 0;
+    transition: border-color 0.2s, color 0.2s;
+    font-family: inherit;
+}
+
+#lobby #players .transfer-creator-btn:hover {
+    border-color: #f1c40f;
+    color: #f1c40f;
+}
+
 #players li .player-name {
     flex: 1;
     min-width: 0;
@@ -500,6 +524,36 @@ h1 {
     pointer-events: none;
 }
 
+#player-hand.scroll-mode {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    justify-content: flex-start;
+    scrollbar-width: thin;
+    scrollbar-color: #667eea #2d2d2d;
+}
+
+#player-hand.scroll-mode::before {
+    display: none;
+}
+
+.card {
+    flex-shrink: 0;
+}
+
+#player-hand.scroll-mode::-webkit-scrollbar {
+    height: 6px;
+}
+
+#player-hand.scroll-mode::-webkit-scrollbar-track {
+    background: #2d2d2d;
+    border-radius: 3px;
+}
+
+#player-hand.scroll-mode::-webkit-scrollbar-thumb {
+    background: #667eea;
+    border-radius: 3px;
+}
+
 .card {
     width: 100px;
     height: 150px;
@@ -796,12 +850,26 @@ h1 {
     flex-wrap: wrap;
 }
 
-body.player-action-disabled #player-hand,
 body.player-action-disabled #center-area {
     pointer-events: none;
     user-select: none;
     -webkit-user-select: none;
     opacity: 0.6;
+}
+
+body.player-action-disabled #player-hand {
+    user-select: none;
+    -webkit-user-select: none;
+    opacity: 0.6;
+}
+
+body.player-action-disabled #player-hand .card {
+    pointer-events: none;
+}
+
+#card-controls {
+    pointer-events: auto;
+    opacity: 1;
 }
 
 #opponent-hands .player {
@@ -845,6 +913,7 @@ body.player-action-disabled #center-area {
     display: flex;
     flex-direction: column;
     align-items: center;
+    position: relative;
     gap: 8px;
     width: 100%;
     max-width: 600px;
@@ -926,6 +995,31 @@ body.player-action-disabled #center-area {
 
 #reaction-send-btn:hover {
     background: #374151;
+    border-color: #667eea;
+    color: #667eea;
+}
+
+#card-controls {
+    position: absolute;
+    top: 6px;
+    left: 6px;
+    z-index: 10;
+}
+
+#card-layout-toggle {
+    padding: 6px 14px;
+    border: 1px solid #374151;
+    border-radius: 8px;
+    background: #2d2d2d;
+    color: #a0aec0;
+    font-size: 0.75rem;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.2s;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+
+#card-layout-toggle:hover {
     border-color: #667eea;
     color: #667eea;
 }

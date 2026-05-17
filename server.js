@@ -703,6 +703,30 @@ wss.on('connection', (ws) => {
                     return;
                 }
 
+                case 'transfer_creator': {
+                    const lobby = findOrCreateLobby(metadata.lobbyId);
+                    const from = lobby.players.find(p => p.id === metadata.id);
+                    if (!from || !from.isCreator) {
+                        ws.send(JSON.stringify({
+                            action: 'error',
+                            message: '只有房主可以转让'
+                        }));
+                        return;
+                    }
+                    const to = lobby.players.find(p => p.id === message.playerId);
+                    if (!to || to.isAI) {
+                        ws.send(JSON.stringify({
+                            action: 'error',
+                            message: '目标玩家无效'
+                        }));
+                        return;
+                    }
+                    from.isCreator = false;
+                    to.isCreator = true;
+                    broadcastPlayers(metadata.lobbyId);
+                    return;
+                }
+
                 case 'ready': {
                     const lobby = findOrCreateLobby(metadata.lobbyId);
                     const player = lobby.players.find(p => p.id === metadata.id);
@@ -842,6 +866,10 @@ wss.on('connection', (ws) => {
                         const removedAIs = lobby.players.filter(p => p.isAI);
                         lobby.players = lobby.players.filter(p => !p.isAI);
                         for (const ai of removedAIs) clearAITimeout(ai.id);
+                        // Transfer creator to next non-AI player
+                        if (lobby.players.length > 0) {
+                            lobby.players[0].isCreator = true;
+                        }
                     }
 
                     checkGameAborted(metadata.lobbyId, metadata.id);
@@ -875,6 +903,10 @@ function handleLeave(lobbyId, playerId) {
             const removedAIs = lobby.players.filter(p => p.isAI);
             lobby.players = lobby.players.filter(p => !p.isAI);
             for (const ai of removedAIs) clearAITimeout(ai.id);
+            // Transfer creator to next non-AI player
+            if (lobby.players.length > 0) {
+                lobby.players[0].isCreator = true;
+            }
         }
 
         checkGameAborted(lobbyId, playerId);
