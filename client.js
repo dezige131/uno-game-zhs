@@ -1023,7 +1023,7 @@ function setupDevPanel() {
     document.addEventListener('keydown', (e) => {
         if (e.ctrlKey && e.shiftKey && e.code === 'KeyD') {
             e.preventDefault();
-            panel.style.display = panel.style.display === 'none' ? '' : 'none';
+            panel.classList.toggle('collapsed');
         }
     });
 
