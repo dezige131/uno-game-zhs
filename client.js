@@ -17,6 +17,9 @@ const colorOptions = document.getElementById('color-options');
 const lobbyInfo = document.getElementById('lobby-info');
 const currentLobbyId = document.getElementById('current-lobby-id');
 const inviteAIBtn = document.getElementById('invite-ai');
+const reactionTextInput = document.getElementById('reaction-text-input');
+const reactionSendBtn = document.getElementById('reaction-send-btn');
+const reactionEmojis = document.getElementById('reaction-emojis');
 
 let myId;
 let ws;
@@ -154,6 +157,10 @@ function connect() {
 
         if (message.action === 'game_aborted') {
             showGameAborted();
+        }
+
+        if (message.action === 'reaction') {
+            showReaction(message.playerId, message.type, message.content);
         }
     };
 
@@ -326,6 +333,7 @@ function updatePlayers(players, turn) {
             playerDiv.textContent = displayText;
         }
 
+        playerDiv.dataset.playerId = player.id;
         if (player.id !== myId) {
             opponentHandsDiv.appendChild(playerDiv);
         }
@@ -706,6 +714,18 @@ document.addEventListener('DOMContentLoaded', () => {
         lobbyIdSpan.title = 'Click to copy lobby ID';
         lobbyIdSpan.addEventListener('click', copyLobbyId);
     }
+
+    // Reaction bar event listeners
+    reactionEmojis.addEventListener('click', (e) => {
+        const btn = e.target.closest('.reaction-emoji');
+        if (!btn) return;
+        sendMessage({ action: 'reaction', type: 'emoji', content: btn.dataset.emoji });
+    });
+
+    reactionSendBtn.addEventListener('click', sendReactionText);
+    reactionTextInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') sendReactionText();
+    });
 });
 
 function copyLobbyId() {
@@ -724,6 +744,22 @@ function copyLobbyId() {
         // Fallback for older browsers
         fallbackCopyToClipboard(lobbyId, lobbyIdSpan);
     }
+}
+
+function sendReactionText() {
+    const text = reactionTextInput.value.trim();
+    if (!text) return;
+    let width = 0;
+    for (const ch of text) {
+        if (/[\u4e00-\u9fff\u3000-\u303f\uff00-\uffef]/.test(ch)) width += 1;
+        else width += 0.3;
+    }
+    if (width > 64) {
+        showAlert('消息过长！');
+        return;
+    }
+    sendMessage({ action: 'reaction', type: 'text', content: text });
+    reactionTextInput.value = '';
 }
 
 function fallbackCopyToClipboard(text, element) {
@@ -846,6 +882,30 @@ function showGameAborted() {
 
     gameOverOverlay.classList.remove('hidden');
     gameOverOverlay.style.display = 'flex';
+}
+
+function showReaction(playerId, type, content) {
+    const playerDiv = opponentHandsDiv.querySelector(`[data-player-id="${playerId}"]`);
+    if (!playerDiv && playerId !== myId) return;
+
+    const popup = document.createElement('div');
+    popup.classList.add('reaction-popup');
+    if (type === 'text') popup.classList.add('reaction-popup-text');
+    popup.textContent = content;
+
+    if (playerDiv) {
+        playerDiv.appendChild(popup);
+    } else {
+        // Self reaction: append to opponent-hands container
+        popup.style.position = 'fixed';
+        popup.style.bottom = '120px';
+        popup.style.left = '50%';
+        popup.style.transform = 'translateX(-50%)';
+        popup.style.animation = 'reactionFloatUp 1.5s ease-out forwards';
+        document.body.appendChild(popup);
+    }
+
+    popup.addEventListener('animationend', () => popup.remove(), { once: true });
 }
 
 gameOverBtn.addEventListener('click', () => {

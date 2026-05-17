@@ -739,6 +739,33 @@ wss.on('connection', (ws) => {
                     handleLeave(metadata.lobbyId, metadata.id);
                     return;
 
+                case 'reaction':
+                    const lobby = lobbies.get(metadata.lobbyId);
+                    if (!lobby || !lobby.game.started) break;
+                    if (message.type === 'emoji') {
+                        broadcastToLobby(metadata.lobbyId, {
+                            action: 'reaction',
+                            playerId: metadata.id,
+                            type: 'emoji',
+                            content: message.content
+                        });
+                    } else if (message.type === 'text') {
+                        if (typeof message.content !== 'string' || message.content.length === 0) break;
+                        let width = 0;
+                        for (const ch of message.content) {
+                            if (/[\u4e00-\u9fff\u3000-\u303f\uff00-\uffef]/.test(ch)) width += 1;
+                            else width += 0.3;
+                        }
+                        if (width > 64) break;
+                        broadcastToLobby(metadata.lobbyId, {
+                            action: 'reaction',
+                            playerId: metadata.id,
+                            type: 'text',
+                            content: message.content
+                        });
+                    }
+                    break;
+
                 default:
                     console.warn('unhandled event', message)
                     return

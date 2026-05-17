@@ -815,6 +815,7 @@ body.player-action-disabled #center-area {
     transition: all 0.3s ease;
     min-width: 150px;
     box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+    position: relative;
 }
 
 #opponent-hands .player.active {
@@ -836,6 +837,143 @@ body.player-action-disabled #center-area {
     0% { box-shadow: 0 4px 8px rgba(255, 107, 107, 0.3); }
     50% { box-shadow: 0 8px 20px rgba(255, 107, 107, 0.6); }
     100% { box-shadow: 0 4px 8px rgba(255, 107, 107, 0.3); }
+}
+
+/* Reaction Bar */
+#reaction-bar {
+    margin-top: 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    max-width: 600px;
+}
+
+#reaction-emojis {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+.reaction-emoji {
+    width: 40px;
+    height: 40px;
+    border: 1px solid #374151;
+    border-radius: 10px;
+    background: #2d2d2d;
+    font-size: 1.25rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    line-height: 1;
+}
+
+.reaction-emoji:hover {
+    background: #374151;
+    border-color: #667eea;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+}
+
+.reaction-emoji:active {
+    transform: translateY(0);
+}
+
+#reaction-text-area {
+    display: flex;
+    gap: 6px;
+    width: 100%;
+}
+
+#reaction-text-input {
+    flex: 1;
+    padding: 8px 12px;
+    border: 1px solid #374151;
+    border-radius: 10px;
+    background: #2d2d2d;
+    color: #e0e0e0;
+    font-size: 0.875rem;
+    font-family: inherit;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+#reaction-text-input:focus {
+    border-color: #667eea;
+}
+
+#reaction-text-input::placeholder {
+    color: #6b7280;
+}
+
+#reaction-send-btn {
+    padding: 8px 16px;
+    border: 1px solid #374151;
+    border-radius: 10px;
+    background: #2d2d2d;
+    color: #e0e0e0;
+    font-size: 0.875rem;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.2s;
+    white-space: nowrap;
+}
+
+#reaction-send-btn:hover {
+    background: #374151;
+    border-color: #667eea;
+    color: #667eea;
+}
+
+/* Reaction Pop-up Animation */
+.reaction-popup {
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 2rem;
+    white-space: nowrap;
+    pointer-events: none;
+    z-index: 100;
+    animation: reactionFloatUp 1.5s ease-out forwards;
+    text-shadow: 0 2px 8px rgba(0,0,0,0.5);
+}
+
+.reaction-popup-text {
+    font-size: 0.875rem;
+    background: rgba(30, 30, 30, 0.9);
+    border: 1px solid #374151;
+    border-radius: 8px;
+    padding: 4px 10px;
+    color: #e0e0e0;
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-shadow: none;
+}
+
+@keyframes reactionFloatUp {
+    0% {
+        opacity: 0;
+        transform: translateX(-50%) translateY(0) scale(0.5);
+    }
+    10% {
+        opacity: 1;
+        transform: translateX(-50%) translateY(-10px) scale(1);
+    }
+    70% {
+        opacity: 1;
+        transform: translateX(-50%) translateY(-40px);
+    }
+    100% {
+        opacity: 0;
+        transform: translateX(-50%) translateY(-60px);
+    }
 }
 
 #opponent-hands .player.creator {
