@@ -609,7 +609,7 @@ wss.on('connection', (ws) => {
 
                     if (startedLobbies.has(lobby.id)) {
                         // Allow reconnect if a disconnected player with same name exists
-                        const disconnectedPlayer = lobby.players.find(p => p.disconnected && p.name.toLowerCase() === (message.name || '').toLowerCase());
+                        const disconnectedPlayer = lobby.players.find(p => p.disconnected && p.id === message.playerId && p.name.toLowerCase() === (message.name || '').toLowerCase());
                         if (disconnectedPlayer) {
                             const oldTimer = disconnectTimers.get(disconnectedPlayer.id);
                             if (oldTimer) clearTimeout(oldTimer);
@@ -644,7 +644,7 @@ wss.on('connection', (ws) => {
                     // 检查重名
                     const existingPlayer = lobby.players.find(p => p.name.toLowerCase() === message.name.toLowerCase());
                     if (existingPlayer) {
-                        if (existingPlayer.disconnected) {
+                        if (existingPlayer.disconnected && existingPlayer.id === message.playerId) {
                             const oldTimer = disconnectTimers.get(existingPlayer.id);
                             if (oldTimer) clearTimeout(oldTimer);
                             disconnectTimers.delete(existingPlayer.id);
@@ -818,7 +818,7 @@ wss.on('connection', (ws) => {
                         ws.send(JSON.stringify({ action: 'error', message: '大厅不存在或已关闭，单击确认刷新页面' }));
                         return;
                     }
-                    const existingPlayer = rLobby.players.find(p => p.disconnected && p.name.toLowerCase() === (message.name || '').toLowerCase());
+                    const existingPlayer = rLobby.players.find(p => p.disconnected && p.id === message.playerId && p.name.toLowerCase() === (message.name || '').toLowerCase());
                     if (!existingPlayer) {
                         ws.send(JSON.stringify({ action: 'error', message: '未找到断开连接的玩家，单击确认刷新页面' }));
                         return;

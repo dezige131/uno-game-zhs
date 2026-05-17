@@ -38,7 +38,7 @@ joinFormContainer.id = 'join-form-container';
 
 let isDisconnected = false;
 let disconnectToastTimeout = null;
-let wasInGame = false;
+let wasInLobby = !!localStorage.getItem('unoInLobby');
 let countdownInterval = null;
 
 function encodeUGC(content) {
@@ -105,8 +105,8 @@ function connect() {
         hideDisconnectedToast();
         const savedLobbyId = localStorage.getItem('unoLobbyId');
         const savedName = localStorage.getItem('unoPlayerName');
-        if (savedLobbyId && savedName && wasInGame) {
-            sendMessage({ action: 'rejoin', lobbyId: savedLobbyId, name: savedName });
+        if (savedLobbyId && savedName && wasInLobby) {
+            sendMessage({ action: 'rejoin', lobbyId: savedLobbyId, name: savedName, playerId: localStorage.getItem('unoPlayerId') });
         }
     };
 
@@ -122,7 +122,9 @@ function connect() {
 
         if (message.action === 'error') {
             showAlert(message.message).then(() => {
-                if (message.message.includes('请刷新页面') || message.message.includes('刷新页面')) {
+                if (message.message.includes('刷新页面')) {
+                    localStorage.removeItem('unoInLobby');
+                    localStorage.removeItem('unoInGame');
                     location.reload();
                     return;
                 }
@@ -137,6 +139,8 @@ function connect() {
             players = message.players;
             currentTurn = message.turn;
             myLobbyId = message.lobbyId;
+            localStorage.setItem('unoPlayerId', myId);
+            localStorage.setItem('unoInLobby', '1');
             console.log('[players] myId =', myId, 'players =', players.map(p => ({ id: p.id, name: p.name })));
             updatePlayers(message.players, message.turn);
             updateTurnIndicator();
@@ -145,7 +149,8 @@ function connect() {
 
         if (message.action === 'start') {
             myId = message.id;
-            wasInGame = true;            console.log('[start] myId =', myId, 'players =', message.players.map(p => ({ id: p.id, name: p.name })), 'turn =', message.turn);
+            localStorage.setItem('unoPlayerId', myId);
+            wasInLobby = true;            console.log('[start] myId =', myId, 'players =', message.players.map(p => ({ id: p.id, name: p.name })), 'turn =', message.turn);
             lobbyDiv.style.display = 'none';
             gameDiv.style.display = 'block';
             players = message.players;
@@ -278,7 +283,9 @@ function attemptRejoin() {
 }
 
 function resetGameState() {
-    wasInGame = false;
+    localStorage.removeItem('unoInLobby');
+    localStorage.removeItem('unoInGame');
+    wasInLobby = false;
     if (countdownInterval) { clearInterval(countdownInterval); countdownInterval = null; }
     // Reset to lobby
     lobbyDiv.style.display = 'block';
@@ -968,7 +975,9 @@ let isGameOverShowing = false;
 function showGameOver(winnerName) {
     if (isGameOverShowing) return;
     isGameOverShowing = true;
-    wasInGame = false;
+    localStorage.removeItem('unoInLobby');
+    localStorage.removeItem('unoInGame');
+    wasInLobby = false;
 
     const isWinner = winnerName === players.find(p => p.id === myId)?.name;
     const myName = localStorage.getItem('unoPlayerName') || '';
@@ -993,7 +1002,9 @@ function showGameOver(winnerName) {
 function showGameAborted() {
     if (isGameOverShowing) return;
     isGameOverShowing = true;
-    wasInGame = false;
+    localStorage.removeItem('unoInLobby');
+    localStorage.removeItem('unoInGame');
+    wasInLobby = false;
 
     gameOverIcon.textContent = '⚡';
     gameOverTitle.textContent = '对局中止';
