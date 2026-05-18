@@ -836,6 +836,13 @@ function applyCardLayout() {
         playerHandDiv.classList.remove('scroll-mode');
         cardLayoutToggle.textContent = '切换到滚动排列';
     }
+    updateScrollAlignment();
+}
+
+function updateScrollAlignment() {
+    const isScroll = playerHandDiv.classList.contains('scroll-mode');
+    if (!isScroll) { playerHandDiv.style.justifyContent = ''; return; }
+    playerHandDiv.style.justifyContent = playerHandDiv.scrollWidth > playerHandDiv.clientWidth ? 'flex-start' : 'center';
 }
 
 cardLayoutToggle.addEventListener('click', () => {
@@ -843,6 +850,7 @@ cardLayoutToggle.addEventListener('click', () => {
     const isScroll = playerHandDiv.classList.contains('scroll-mode');
     localStorage.setItem('unoCardLayout', isScroll ? 'scroll' : 'wrap');
     cardLayoutToggle.textContent = isScroll ? '切换到换行排列' : '切换到滚动排列';
+    updateScrollAlignment();
 });
 
 function sendReactionText() {
