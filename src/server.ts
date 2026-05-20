@@ -1123,8 +1123,7 @@ wss.on('connection', (ws: WebSocket, _req: IncomingMessage) => {
           const player3 = lobby3.players.find(p => p.id === metadata.id);
           if (!player3) { ws.send(JSON.stringify({ action: 'error', message: '玩家ID未找到' } as const)); return; }
           const removeCount = Math.min(message.count || 1, player3.hand!.length);
-          const removed = player3.hand!.splice(0, removeCount);
-          lobby3.game.discardPile.push(...removed);
+          player3.hand!.splice(0, removeCount);
           if (player3.hand!.length === 0) {
             broadcastWin(metadata.lobbyId!, player3.name);
           } else {
