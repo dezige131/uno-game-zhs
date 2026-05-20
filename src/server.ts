@@ -74,19 +74,16 @@ const files: Record<string, { content: Buffer; type: string }> = {};
 
 function loadStaticFiles(): void {
   for (const [file, type] of allowFiles) {
-    const fullPath = getFilePath(file);
+    let fullPath = path.join(__dirname, file);
+    try { readFileSync(fullPath); } catch (_e) {
+      if (file === 'client.js') {
+        fullPath = path.join(__dirname, '..', 'dist', file);
+      } else {
+        fullPath = path.join(__dirname, '..', 'public', file);
+      }
+    }
     files[file] = { content: readFileSync(fullPath), type };
   }
-}
-
-function getFilePath(filename: string): string {
-  if (isDev()) {
-    if (filename === 'client.js') {
-      return path.join(__dirname, '..', 'dist', filename);
-    }
-    return path.join(__dirname, '..', 'public', filename);
-  }
-  return path.join(__dirname, filename);
 }
 
 // Load static files at startup
@@ -244,23 +241,41 @@ function shuffleDeck(lobbyId: string): void {
   }
 }
 
+function generateRandomCard(): Card {
+  const colors = ['red', 'yellow', 'green', 'blue'];
+  const types = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'skip', 'reverse', 'draw2'];
+  const r = Math.random();
+  if (r < 0.05) return { type: 'wild4' };
+  if (r < 0.10) return { type: 'wild' };
+  return {
+    color: colors[Math.floor(Math.random() * colors.length)],
+    type: types[Math.floor(Math.random() * types.length)]
+  };
+}
+
 function drawCardsFromDeck(lobby: Lobby, lobbyId: string, count: number): Card[] {
   const drawn: Card[] = [];
   while (drawn.length < count) {
-    let card = lobby.game.deck.pop();
-    if (!card) {
-      if (lobby.game.discardPile.length >= 2) {
-        const topCard = lobby.game.discardPile.pop()!;
-        lobby.game.deck = lobby.game.discardPile;
-        lobby.game.discardPile = [topCard];
-        shuffleDeck(lobbyId);
-        card = lobby.game.deck.pop();
-      } else {
-        break;
+    let card: Card
+
+    if (false && lobby.game.deck.length > 1) {
+      // disabled
+      card = lobby.game.deck.pop()!;
+      if (!card) {
+        if (lobby.game.discardPile.length >= 2) {
+          const topCard = lobby.game.discardPile.pop()!;
+          lobby.game.deck = lobby.game.discardPile;
+          lobby.game.discardPile = [topCard];
+          shuffleDeck(lobbyId);
+          card = lobby.game.deck.pop()!;
+        }
       }
+    } else {
+      card = generateRandomCard();
     }
     if (card) drawn.push(card);
   }
+
   return drawn;
 }
 
@@ -560,6 +575,7 @@ function isValidMove(lobbyId: string, card: Card): boolean {
   const lobby = lobbies.get(lobbyId);
   if (!lobby) return false;
 
+  if (lobby.game.discardPile.length === 0) return true;
   const topCard = lobby.game.discardPile[lobby.game.discardPile.length - 1];
   return card.color === topCard.color || card.type === topCard.type || card.type === 'wild' || card.type === 'wild4';
 }

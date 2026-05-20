@@ -313,7 +313,7 @@ function connect(): void {
     isDisconnected = true;
     showDisconnectedToast('connecting');
     if (event.code !== 1000) {
-      setTimeout(connect, 100);
+      setTimeout(connect, 1300);
     }
   };
 
