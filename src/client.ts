@@ -151,6 +151,7 @@ let currentWs: WebSocket | null = null;
 function connect(): void {
   if (connecting && ws && ws.readyState !== WebSocket.CLOSED) return;
   connecting = true;
+  joinButton.disabled = true;
   const wsUrl = new URL('/ws', location.href);
   wsUrl.protocol = wsUrl.protocol === 'https:' ? 'wss:' : 'ws:';
   const newWs = new WebSocket(wsUrl.toString());
@@ -162,6 +163,9 @@ function connect(): void {
     connecting = false;
     clientLog('Connected to server');
     isDisconnected = false;
+    joinButton.disabled = false;
+    lobbyIdInput.disabled = false;
+    nameInput.disabled = false;
     const btn = document.getElementById('dev-disconnect-btn');
     if (btn) btn.textContent = '断开';
     const savedId = localStorage.getItem('unoPlayerId');
@@ -247,12 +251,12 @@ function connect(): void {
     if (message.action === 'players') {
       clientLog(`players received, flushing actionQueue (was ${actionQueue.length})`);
       hideDisconnectedToast();
-      flushQueue();
       players = message.players || [];
       currentTurn = message.turn || 0;
       myLobbyId = message.lobbyId || null;
       localStorage.setItem('unoPlayerId', myId!);
       localStorage.setItem('unoInLobby', '1');
+      flushQueue();
       clientLog('[players] myId =', myId, 'players =', players.map(p => ({ id: p.id, name: p.name })));
       updatePlayers(players, currentTurn);
       updateTurnIndicator();
@@ -317,6 +321,7 @@ function connect(): void {
     connecting = false;
     clientLog(`ws.onclose code=${event.code} reason=${event.reason}`);
     isDisconnected = true;
+    joinButton.disabled = true;
     showDisconnectedToast('connecting');
     if (event.code !== 1000) {
       setTimeout(connect, 1300);
@@ -340,13 +345,19 @@ function flushQueue(): void {
   }
   while (actionQueue.length > 0) {
     const msg = actionQueue.shift()!;
+    const action = (msg as Record<string, string>).action;
     // Skip ready on reconnect: server state is already current,
     // sending a stale ready would toggle the state incorrectly
-    if ((msg as Record<string, string>).action === 'ready') {
+    if (action === 'ready') {
       clientLog(`flush SKIPPING stale ready`);
       continue;
     }
-    clientLog(`flush sending action=${(msg as Record<string, string>).action}`);
+    // Skip join if we are already in a lobby (reconnected successfully)
+    if (action === 'join' && myLobbyId) {
+      clientLog(`flush SKIPPING stale join (already in lobby ${myLobbyId})`);
+      continue;
+    }
+    clientLog(`flush sending action=${action}`);
     if (canSendMessage()) {
       ws!.send(JSON.stringify(msg));
     }

@@ -119,6 +119,14 @@ h1 {
     transform: translateY(-1px);
 }
 
+#join:disabled,
+#name:disabled,
+#lobby-id:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
 #ready {
     background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
     color: white;
