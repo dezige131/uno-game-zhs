@@ -40,7 +40,7 @@ describe('UNO Client', () => {
     await page.close()
   })
 
-  it('shows (已准备) after player readies and state persists after opponent disconnects', { timeout: 30000 }, async () => {
+  it('shows (已准备) after player readies and state persists after opponent disconnects', async () => {
     const pageA = await browser.newPage()
     const pageB = await browser.newPage()
     await pageA.goto(BASE)

@@ -55,10 +55,20 @@ interface ServerMessage {
   discardPile?: Card[];
   winner?: string;
   message?: string;
+  needRefresh?: boolean;
   playerId?: string;
   type?: string;
   content?: string;
   log?: object[];
+}
+
+// ── Logging ──────────────────────────────────────────────
+const CLIENT_PREFIX = '[client]';
+function clientLog(msg: string, ...args: unknown[]): void {
+  console.log(`${CLIENT_PREFIX} ${msg}`, ...args);
+}
+function clientWarn(msg: string, ...args: unknown[]): void {
+  console.warn(`${CLIENT_PREFIX} ${msg}`, ...args);
 }
 
 let myId: string | null = null;
@@ -150,12 +160,12 @@ function connect(): void {
   newWs.onopen = () => {
     if (newWs !== currentWs) return;
     connecting = false;
-    console.log('Connected to server');
+    clientLog('Connected to server');
     isDisconnected = false;
     const btn = document.getElementById('dev-disconnect-btn');
     if (btn) btn.textContent = '断开';
     const savedId = localStorage.getItem('unoPlayerId');
-    console.log(`[client] onopen savedId=${savedId ? savedId.slice(0, 8) : null} actionQueue=${actionQueue.length}`);
+    clientLog(`onopen savedId=${savedId ? savedId.slice(0, 8) : null} actionQueue=${actionQueue.length}`);
     if (savedId) {
       justReconnected = true;
       sendMessage({ action: 'reconnect', playerId: savedId });
@@ -165,7 +175,7 @@ function connect(): void {
       if (savedName && savedLobbyId) {
         const msg: Record<string, string> = { action: 'join', name: savedName, lobbyId: savedLobbyId };
         if (savedId) msg.playerId = savedId;
-        console.log(`[client] onopen fallback join name=${savedName}`);
+        clientLog(`onopen fallback join name=${savedName}`);
         sendMessage(msg);
       }
       hideDisconnectedToast();
@@ -182,9 +192,9 @@ function connect(): void {
 
     if (message.action === 'init') {
       myId = message.id!;
-      console.log('[init] myId =', myId);
+      clientLog('[init] myId =', myId);
       if (message.reconnectLost) {
-        console.log('[init] reconnect lost, showing join form');
+        clientLog('[init] reconnect lost, showing join form');
         localStorage.removeItem('unoPlayerId');
         localStorage.removeItem('unoInLobby');
         localStorage.removeItem('unoInGame');
@@ -200,7 +210,7 @@ function connect(): void {
     }
 
     if (message.action === 'error') {
-      if (message.message && message.message.includes('刷新页面')) {
+      if (message.needRefresh) {
         const now = Date.now();
         if (now - refreshErrorTime > 10000) {
           refreshErrorCount = 0;
@@ -222,14 +232,10 @@ function connect(): void {
         }
       }
       showAlert(message.message || '').then(() => {
-        if (message.message && message.message.includes('刷新页面')) {
+        if (message.needRefresh) {
           localStorage.removeItem('unoInLobby');
           localStorage.removeItem('unoInGame');
           localStorage.removeItem('unoPlayerId');
-          nameInput.disabled = false;
-          lobbyIdInput.disabled = false;
-          joinButton.disabled = false;
-          return;
         }
         nameInput.disabled = false;
         lobbyIdInput.disabled = false;
@@ -239,7 +245,7 @@ function connect(): void {
     }
 
     if (message.action === 'players') {
-      console.log(`[client] players received, flushing actionQueue (was ${actionQueue.length})`);
+      clientLog(`players received, flushing actionQueue (was ${actionQueue.length})`);
       hideDisconnectedToast();
       flushQueue();
       players = message.players || [];
@@ -247,19 +253,19 @@ function connect(): void {
       myLobbyId = message.lobbyId || null;
       localStorage.setItem('unoPlayerId', myId!);
       localStorage.setItem('unoInLobby', '1');
-      console.log('[players] myId =', myId, 'players =', players.map(p => ({ id: p.id, name: p.name })));
+      clientLog('[players] myId =', myId, 'players =', players.map(p => ({ id: p.id, name: p.name })));
       updatePlayers(players, currentTurn);
       updateTurnIndicator();
       showLobbyInfo(message.lobbyId || '');
     }
 
     if (message.action === 'start') {
-      console.log(`[client] start received, flushing actionQueue (was ${actionQueue.length})`);
+      clientLog(`start received, flushing actionQueue (was ${actionQueue.length})`);
       hideDisconnectedToast();
       flushQueue();
       myId = message.id!;
       localStorage.setItem('unoPlayerId', myId);
-      console.log('[start] myId =', myId, 'players =', (message.players || []).map(p => ({ id: p.id, name: p.name })), 'turn =', message.turn);
+      clientLog('[start] myId =', myId, 'players =', (message.players || []).map(p => ({ id: p.id, name: p.name })), 'turn =', message.turn);
       lobbyDiv.style.display = 'none';
       gameDiv.style.display = 'block';
       players = message.players || [];
@@ -273,10 +279,10 @@ function connect(): void {
     }
 
     if (message.action === 'update') {
-      console.log(`[client] update received, flushing actionQueue (was ${actionQueue.length})`);
+      clientLog(`update received, flushing actionQueue (was ${actionQueue.length})`);
       hideDisconnectedToast();
       flushQueue();
-      console.log('[update] myId =', myId, 'turn =', message.turn, 'players =', (message.players || []).map(p => ({ id: p.id, name: p.name })), 'current =', (message.players || [])[message.turn || 0] ? (message.players || [])[message.turn || 0].id : null);
+      clientLog('[update] myId =', myId, 'turn =', message.turn, 'players =', (message.players || []).map(p => ({ id: p.id, name: p.name })), 'current =', (message.players || [])[message.turn || 0] ? (message.players || [])[message.turn || 0].id : null);
       players = message.players || [];
       currentTurn = message.turn || 0;
       myHand = message.hand || [];
@@ -296,7 +302,7 @@ function connect(): void {
     }
 
     if (message.action === 'dev_state_export') {
-      console.log('[dev_state_export]', JSON.stringify(message.log, null, 2));
+      clientLog('[dev_state_export]', JSON.stringify(message.log, null, 2));
       showAlert('状态日志已输出到控制台');
       return;
     }
@@ -309,7 +315,7 @@ function connect(): void {
   newWs.onclose = (event: CloseEvent) => {
     if (newWs !== currentWs) return;
     connecting = false;
-    console.log(`[client] ws.onclose code=${event.code} reason=${event.reason}`);
+    clientLog(`ws.onclose code=${event.code} reason=${event.reason}`);
     isDisconnected = true;
     showDisconnectedToast('connecting');
     if (event.code !== 1000) {
@@ -319,7 +325,7 @@ function connect(): void {
 
   newWs.onerror = (err: Event) => {
     if (newWs !== currentWs) return;
-    console.error('WebSocket error:', err);
+    clientWarn('WebSocket error:', err);
   };
 }
 
@@ -330,17 +336,17 @@ function canSendMessage(): boolean {
 function flushQueue(): void {
   if (justReconnected) {
     justReconnected = false;
-    console.log(`[client] flushQueue sending ${actionQueue.length} queued actions`);
+    clientLog(`flushQueue sending ${actionQueue.length} queued actions`);
   }
   while (actionQueue.length > 0) {
     const msg = actionQueue.shift()!;
     // Skip ready on reconnect: server state is already current,
     // sending a stale ready would toggle the state incorrectly
     if ((msg as Record<string, string>).action === 'ready') {
-      console.log(`[client] flush SKIPPING stale ready`);
+      clientLog(`flush SKIPPING stale ready`);
       continue;
     }
-    console.log(`[client] flush sending action=${(msg as Record<string, string>).action}`);
+    clientLog(`flush sending action=${(msg as Record<string, string>).action}`);
     if (canSendMessage()) {
       ws!.send(JSON.stringify(msg));
     }
@@ -352,7 +358,7 @@ function sendMessage(message: object): boolean {
     ws!.send(JSON.stringify(message));
     return true;
   }
-  console.log(`[client] QUEUE action=${(message as Record<string, string>).action}`);
+  clientLog(`QUEUE action=${(message as Record<string, string>).action}`);
   actionQueue.push(message);
   isDisconnected = true;
   showDisconnectedToast('action');
@@ -367,7 +373,7 @@ function updateReadyButton(): void {
   const text = me && me.ready ? '取消准备' : '准备';
   if (text === lastReadyText) return;
   lastReadyText = text;
-  console.log(`[client] updateReadyButton myId=${myId ? myId.slice(0, 8) : null} found=${!!me} ready=${me ? me.ready : null} text=${text}`);
+  clientLog(`updateReadyButton myId=${myId ? myId.slice(0, 8) : null} found=${!!me} ready=${me ? me.ready : null} text=${text}`);
   readyButton.textContent = text;
 }
 
@@ -382,7 +388,7 @@ function updateTurnIndicator(): void {
   const currentPlayer = players[currentTurn];
   const isMyTurn = currentPlayer && currentPlayer.id === myId;
 
-  console.log('[turn] myId =', myId, 'currentPlayer.id =', currentPlayer ? currentPlayer.id : null, 'isMyTurn =', isMyTurn);
+  clientLog('[turn] myId =', myId, 'currentPlayer.id =', currentPlayer ? currentPlayer.id : null, 'isMyTurn =', isMyTurn);
 
   // `textContent` is safe
   if (isMyTurn) {
@@ -471,9 +477,6 @@ function resetGameState(): void {
     // Reset turn indicator
     turnText.textContent = 'Waiting for game to start...';
     turnIndicator.classList.remove('my-turn');
-
-    // fix all problem
-    location.reload();
   });
 }
 
@@ -896,12 +899,12 @@ if (inviteAIBtn) {
 
 readyButton.addEventListener('click', () => {
   if (readyButton.disabled) {
-    console.log(`[client] ready click ignored (disabled)`);
+    clientLog(`ready click ignored (disabled)`);
     return;
   }
   readyButton.disabled = true;
   readyButton.textContent = '...';
-  console.log(`[client] ready click, sending, isDisconnected=${isDisconnected}`);
+  clientLog(`ready click, sending, isDisconnected=${isDisconnected}`);
   sendMessage({ action: 'ready' });
 });
 
@@ -1031,7 +1034,7 @@ function fallbackCopyToClipboard(text: string, element: HTMLElement): void {
     document.execCommand('copy');
     showCopyFeedback(element);
   } catch (err) {
-    console.error('Failed to copy lobby ID:', err);
+    clientWarn('Failed to copy lobby ID:', err);
   }
 
   document.body.removeChild(textArea);

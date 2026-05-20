@@ -3,6 +3,7 @@ import { Server, IncomingMessage, ServerResponse } from 'http';
 import { readFileSync } from 'fs';
 import path from 'path';
 import { decideMove } from './aiplayer';
+import { ERR, errorResponse, ErrorCode } from './errors';
 
 interface Card {
   color?: string;
@@ -99,6 +100,11 @@ const httpServer = new Server((req: IncomingMessage, res: ServerResponse) => {
     return res.end(content);
   }
 
+  if (isDev() && url === '/errors') {
+    res.setHeader('Content-Type', 'application/json');
+    return res.end(JSON.stringify(ERR));
+  }
+
   if (!!filename && filename in files) {
     const { content, type } = files[filename];
     res.setHeader('Content-Type', type);
@@ -128,6 +134,17 @@ const disconnectTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const reconnectTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const sessions = new Map<string, SessionData>();
 const deferTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+// ── Logging ──────────────────────────────────────────────
+const LOG_PREFIX = '[server]';
+
+function serverLog(msg: string, ...args: unknown[]): void {
+  console.log(`${LOG_PREFIX} ${msg}`, ...args);
+}
+
+function serverWarn(msg: string, detail?: unknown): void {
+  console.warn(`${LOG_PREFIX} ${msg}`, detail ?? '');
+}
 
 let stateLog: StateLogEntry[] = [];
 function logState(event: string, metadata?: ClientMetadata, details: Record<string, unknown> = {}): void {
@@ -201,7 +218,7 @@ function checkStartGame(lobbyId: string): void {
   const lobby = lobbies.get(lobbyId);
   if (!lobby) return;
   const activePlayers = lobby.players.filter(p => !p.disconnected);
-  console.log(`[server] checkStartGame lobby=${lobbyId?.slice(0, 8)} total=${lobby.players.length} active=${activePlayers.length} activeReady=${activePlayers.filter(p => p.ready).length}`);
+  serverLog(`checkStartGame lobby=${lobbyId?.slice(0, 8)} total=${lobby.players.length} active=${activePlayers.length} activeReady=${activePlayers.filter(p => p.ready).length}`);
   if (lobby.players.length >= 2 && activePlayers.length >= 2 && activePlayers.every(p => p.ready)) {
     startGame(lobbyId);
   }
@@ -663,7 +680,7 @@ wss.on('connection', (ws: WebSocket, _req: IncomingMessage) => {
   clients.set(ws, metadata);
 
   ws.send(JSON.stringify({ action: 'init', dev: isDev(), id }));
-  console.log('client connected', id);
+  serverLog(`client connected ${id}`);
 
   ws.on('message', (messageAsString: Buffer | string) => {
     let message: ClientMessage;
@@ -678,7 +695,7 @@ wss.on('connection', (ws: WebSocket, _req: IncomingMessage) => {
     if (metadata && metadata.lobbyId && message.action !== 'reconnect' && message.action !== 'join') {
       const state = validateState(metadata.id, metadata.name, metadata.lobbyId);
       if (state === 'disconnected') {
-        console.log(`[server] state mismatch: player ${metadata.id?.slice(0, 8)} is ${state}, resetting lobbyId`);
+        serverLog(`state mismatch: player ${metadata.id?.slice(0, 8)} is ${state}, resetting lobbyId`);
         metadata.lobbyId = null;
       }
     }
@@ -690,7 +707,7 @@ wss.on('connection', (ws: WebSocket, _req: IncomingMessage) => {
           if (typeof message.lobbyId !== 'string' || !message.lobbyId.length) {
             ws.send(JSON.stringify({
               action: 'error',
-              message: '请提供大厅名称'
+              message: ERR.NEED_LOBBY_NAME
             } as const));
             return;
           }
@@ -724,7 +741,7 @@ wss.on('connection', (ws: WebSocket, _req: IncomingMessage) => {
             }
             ws.send(JSON.stringify({
               action: 'error',
-              message: '大厅已开始对局, 请使用其他名称'
+              message: ERR.LOBBY_STARTED_JOIN
             } as const));
             return;
           }
@@ -752,7 +769,7 @@ wss.on('connection', (ws: WebSocket, _req: IncomingMessage) => {
             }
             ws.send(JSON.stringify({
               action: 'error',
-              message: '该大厅中已存在同名玩家，请选择其他名称'
+              message: ERR.NAME_DUPLICATE
             } as const));
             return;
           }
@@ -769,7 +786,7 @@ wss.on('connection', (ws: WebSocket, _req: IncomingMessage) => {
           lobby.players.push(player);
           sessions.set(metadata.id, { name: metadata.name!, lobbyId: metadata.lobbyId! });
           broadcastPlayers(metadata.lobbyId!);
-          console.log('player jointed to', lobby.id, ':', player);
+          serverLog(`player jointed to ${lobby.id} :`, player);
           return;
         }
 
@@ -779,14 +796,14 @@ wss.on('connection', (ws: WebSocket, _req: IncomingMessage) => {
           if (!creator || !creator.isCreator) {
             ws.send(JSON.stringify({
               action: 'error',
-              message: '只有房主可以邀请 AI'
+              message: ERR.CREATOR_ONLY
             } as const));
             return;
           }
           if (startedLobbies.has(lobby.id)) {
             ws.send(JSON.stringify({
               action: 'error',
-              message: '对局已开始'
+              message: ERR.GAME_ALREADY_STARTED
             } as const));
             return;
           }
@@ -810,7 +827,7 @@ wss.on('connection', (ws: WebSocket, _req: IncomingMessage) => {
           if (!creator || !creator.isCreator) {
             ws.send(JSON.stringify({
               action: 'error',
-              message: '只有房主可以准备 AI'
+              message: ERR.CREATOR_ONLY_AI_READY
             } as const));
             return;
           }
@@ -818,7 +835,7 @@ wss.on('connection', (ws: WebSocket, _req: IncomingMessage) => {
           if (!aiPlayer) {
             ws.send(JSON.stringify({
               action: 'error',
-              message: 'AI 玩家未找到'
+              message: ERR.AI_NOT_FOUND
             } as const));
             return;
           }
@@ -834,14 +851,14 @@ wss.on('connection', (ws: WebSocket, _req: IncomingMessage) => {
           if (!creator || !creator.isCreator) {
             ws.send(JSON.stringify({
               action: 'error',
-              message: '只有房主可以踢出 AI'
+              message: ERR.CREATOR_ONLY_KICK_AI
             } as const));
             return;
           }
           if (startedLobbies.has(lobby.id)) {
             ws.send(JSON.stringify({
               action: 'error',
-              message: '对局已开始'
+              message: ERR.GAME_ALREADY_STARTED
             } as const));
             return;
           }
@@ -849,7 +866,7 @@ wss.on('connection', (ws: WebSocket, _req: IncomingMessage) => {
           if (aiIndex === -1) {
             ws.send(JSON.stringify({
               action: 'error',
-              message: 'AI 玩家未找到'
+              message: ERR.AI_NOT_FOUND
             } as const));
             return;
           }
@@ -865,7 +882,7 @@ wss.on('connection', (ws: WebSocket, _req: IncomingMessage) => {
           if (!from || !from.isCreator) {
             ws.send(JSON.stringify({
               action: 'error',
-              message: '只有房主可以转让'
+              message: ERR.CREATOR_ONLY_TRANSFER
             } as const));
             return;
           }
@@ -873,7 +890,7 @@ wss.on('connection', (ws: WebSocket, _req: IncomingMessage) => {
           if (!to || to.isAI || to.disconnected) {
             ws.send(JSON.stringify({
               action: 'error',
-              message: '目标玩家无效'
+              message: ERR.TARGET_INVALID
             } as const));
             return;
           }
@@ -886,7 +903,7 @@ wss.on('connection', (ws: WebSocket, _req: IncomingMessage) => {
         case 'ready': {
           const lobby = lobbies.get(metadata.lobbyId!);
           if (!lobby) {
-            ws.send(JSON.stringify({ action: 'error', message: '未加入大厅' } as const));
+            ws.send(JSON.stringify(errorResponse('NOT_IN_LOBBY')));
             return;
           }
           let player = lobby.players.find(p => p.id === metadata.id);
@@ -896,7 +913,7 @@ wss.on('connection', (ws: WebSocket, _req: IncomingMessage) => {
           }
           const oldReady = player.ready;
           player.ready = !player.ready;
-          console.log(`[server] ready TOGGLE player=${player.name} ${oldReady}→${player.ready} metadata.lobbyId=${metadata.lobbyId?.slice(0, 8)} playerId=${metadata.id?.slice(0, 8)}`);
+          serverLog(`ready TOGGLE player=${player.name} ${oldReady}→${player.ready} lobbyId=${metadata.lobbyId?.slice(0, 8)} playerId=${metadata.id?.slice(0, 8)}`);
           logState('ready', metadata, { player: player.name, ready: player.ready, allPlayers: lobby.players.map(p => ({ name: p.name, ready: p.ready, disconnected: p.disconnected })) });
           sessions.set(player.id, { ...sessions.get(player.id)!, pendingReady: player.ready });
           broadcastPlayers(metadata.lobbyId!);
@@ -919,12 +936,12 @@ wss.on('connection', (ws: WebSocket, _req: IncomingMessage) => {
           if (!lobbyAlive) {
             const newId = uuidv4();
             metadata.id = newId;
-            console.log(`[server] reconnect lobby dead, new session newId=${newId.slice(0, 8)}, keeping old session=${message.playerId!.slice(0, 8)}`);
+            serverLog(`reconnect lobby dead, new session newId=${newId.slice(0, 8)}`);
             ws.send(JSON.stringify({ action: 'init', id: newId, dev: isDev(), reconnectLost: true }));
             return;
           }
           const existingPlayer = rLobby!.players.find(p => p.id === message.playerId);
-          console.log(`[server] reconnect existingPlayer=${!!existingPlayer} disconnected=${existingPlayer?.disconnected} ready=${existingPlayer?.ready}`);
+          serverLog(`reconnect existingPlayer=${!!existingPlayer} disconnected=${existingPlayer?.disconnected} ready=${existingPlayer?.ready}`);
           if (!existingPlayer) {
             const newId = uuidv4();
             metadata.id = newId;
@@ -949,9 +966,9 @@ wss.on('connection', (ws: WebSocket, _req: IncomingMessage) => {
           const pending = sessions.get(existingPlayer.id);
           if (pending && pending.pendingReady !== undefined) {
             existingPlayer.ready = pending.pendingReady;
-            console.log(`[server] reconnect restored ready=${existingPlayer.ready} for ${existingPlayer.name}`);
+            serverLog(`reconnect restored ready=${existingPlayer.ready} for ${existingPlayer.name}`);
           } else {
-            console.log(`[server] reconnect NO pendingReady for ${existingPlayer.name}, current ready=${existingPlayer.ready}`);
+            serverLog(`reconnect NO pendingReady for ${existingPlayer.name}, current ready=${existingPlayer.ready}`);
           }
           for (const [existingWs, existingMeta] of clients) {
             if (existingMeta.id === message.playerId && existingWs !== ws) {
@@ -985,35 +1002,35 @@ wss.on('connection', (ws: WebSocket, _req: IncomingMessage) => {
 
         case 'play':
           if (!lobbies.has(metadata.lobbyId || '')) {
-            ws.send(JSON.stringify({ action: 'error', message: '游戏房间已不存在，单击确认刷新页面' } as const)); return;
+            ws.send(JSON.stringify(errorResponse('LOBBY_NOT_FOUND'))); return;
           }
           handlePlay(metadata.lobbyId!, metadata.id, message.card!);
           return;
 
         case 'draw':
           if (!lobbies.has(metadata.lobbyId || '')) {
-            ws.send(JSON.stringify({ action: 'error', message: '游戏房间已不存在，单击确认刷新页面' } as const)); return;
+            ws.send(JSON.stringify(errorResponse('LOBBY_NOT_FOUND'))); return;
           }
           handleDraw(metadata.lobbyId!, metadata.id);
           return;
 
         case 'uno':
           if (!lobbies.has(metadata.lobbyId || '')) {
-            ws.send(JSON.stringify({ action: 'error', message: '游戏房间已不存在，单击确认刷新页面' } as const)); return;
+            ws.send(JSON.stringify(errorResponse('LOBBY_NOT_FOUND'))); return;
           }
           handleUno(metadata.lobbyId!, metadata.id);
           return;
 
         case 'play_multiple':
           if (!lobbies.has(metadata.lobbyId || '')) {
-            ws.send(JSON.stringify({ action: 'error', message: '游戏房间已不存在，请刷新页面' } as const)); return;
+            ws.send(JSON.stringify(errorResponse('LOBBY_NOT_FOUND_REFRESH'))); return;
           }
           handlePlayMultiple(metadata.lobbyId!, metadata.id, message.cards!);
           return;
 
         case 'leave':
           if (!lobbies.has(metadata.lobbyId || '')) {
-            ws.send(JSON.stringify({ action: 'error', message: '游戏房间已不存在，请刷新页面' } as const)); return;
+            ws.send(JSON.stringify(errorResponse('LOBBY_NOT_FOUND_REFRESH'))); return;
           }
           handleLeave(metadata.lobbyId!, metadata.id);
           return;
@@ -1059,12 +1076,12 @@ wss.on('connection', (ws: WebSocket, _req: IncomingMessage) => {
           break;
 
         default:
-          console.warn('unhandled event', message);
+          serverWarn('unhandled event', message);
           return;
       }
     } else {
       if (!isDev()) {
-        console.warn('cannot handle dev event for production environment', message);
+        serverWarn('cannot handle dev event', message);
         return;
       }
 
@@ -1075,7 +1092,7 @@ wss.on('connection', (ws: WebSocket, _req: IncomingMessage) => {
           if (!player1) {
             ws.send(JSON.stringify({
               action: 'error',
-              message: '玩家ID未找到'
+              message: ERR.PLAYER_NOT_FOUND
             } as const));
             return;
           }
@@ -1083,9 +1100,9 @@ wss.on('connection', (ws: WebSocket, _req: IncomingMessage) => {
           return;
         case 'dev_add_cards': {
           const lobby2 = findOrCreateLobby(metadata.lobbyId!);
-          if (!lobby2.game.started) { ws.send(JSON.stringify({ action: 'error', message: '对局未开始' } as const)); return; }
+          if (!lobby2.game.started) { ws.send(JSON.stringify(errorResponse('GAME_NOT_STARTED'))); return; }
           const player2 = lobby2.players.find(p => p.id === metadata.id);
-          if (!player2) { ws.send(JSON.stringify({ action: 'error', message: '玩家ID未找到' } as const)); return; }
+          if (!player2) { ws.send(JSON.stringify(errorResponse('PLAYER_NOT_FOUND'))); return; }
           const count = Math.min(message.count || 1, 20);
           let drawn = lobby2.game.deck.splice(0, count);
           if (drawn.length < count && lobby2.game.discardPile.length >= 2) {
@@ -1102,9 +1119,9 @@ wss.on('connection', (ws: WebSocket, _req: IncomingMessage) => {
         }
         case 'dev_add_all_cards': {
           const lobby2 = findOrCreateLobby(metadata.lobbyId!);
-          if (!lobby2.game.started) { ws.send(JSON.stringify({ action: 'error', message: '对局未开始' } as const)); return; }
+          if (!lobby2.game.started) { ws.send(JSON.stringify(errorResponse('GAME_NOT_STARTED'))); return; }
           const player2 = lobby2.players.find(p => p.id === metadata.id);
-          if (!player2) { ws.send(JSON.stringify({ action: 'error', message: '玩家ID未找到' } as const)); return; }
+          if (!player2) { ws.send(JSON.stringify(errorResponse('PLAYER_NOT_FOUND'))); return; }
           let drawn = lobby2.game.deck.splice(0, lobby2.game.deck.length);
           if (drawn.length === 0 && lobby2.game.discardPile.length >= 2) {
             const topCard = lobby2.game.discardPile.pop()!;
@@ -1119,9 +1136,9 @@ wss.on('connection', (ws: WebSocket, _req: IncomingMessage) => {
         }
         case 'dev_remove_cards': {
           const lobby3 = findOrCreateLobby(metadata.lobbyId!);
-          if (!lobby3.game.started) { ws.send(JSON.stringify({ action: 'error', message: '对局未开始' } as const)); return; }
+          if (!lobby3.game.started) { ws.send(JSON.stringify(errorResponse('GAME_NOT_STARTED'))); return; }
           const player3 = lobby3.players.find(p => p.id === metadata.id);
-          if (!player3) { ws.send(JSON.stringify({ action: 'error', message: '玩家ID未找到' } as const)); return; }
+          if (!player3) { ws.send(JSON.stringify(errorResponse('PLAYER_NOT_FOUND'))); return; }
           const removeCount = Math.min(message.count || 1, player3.hand!.length);
           player3.hand!.splice(0, removeCount);
           if (player3.hand!.length === 0) {
@@ -1133,7 +1150,7 @@ wss.on('connection', (ws: WebSocket, _req: IncomingMessage) => {
         }
         case 'dev_skip': {
           const lobby4 = findOrCreateLobby(metadata.lobbyId!);
-          if (!lobby4.game.started) { ws.send(JSON.stringify({ action: 'error', message: '对局未开始' } as const)); return; }
+          if (!lobby4.game.started) { ws.send(JSON.stringify(errorResponse('GAME_NOT_STARTED'))); return; }
           lobby4.game.turn = (lobby4.game.turn + lobby4.game.direction + lobby4.players.length) % lobby4.players.length;
           broadcastGameUpdate(metadata.lobbyId!);
           return;
@@ -1144,7 +1161,7 @@ wss.on('connection', (ws: WebSocket, _req: IncomingMessage) => {
           return;
         }
         default:
-          console.warn('unhandled dev event', message);
+          serverWarn('unhandled dev event', message);
       }
     }
   });
@@ -1259,7 +1276,7 @@ function handleLeave(lobbyId: string, playerId: string): void {
     }, playerId);
 
     checkStartGame(lobbyId);
-    console.log('player leaved from', lobby.id, ':', player);
+    serverLog(`player leaved from ${lobby.id} :`, player);
 
     if (lobby.players.length === 0) {
       lobbies.delete(lobbyId);
