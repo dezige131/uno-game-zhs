@@ -797,4 +797,49 @@ describe('UNO Client', () => {
 
     await pageA.close()
   })
+
+  it('invite AI button shows after leaving and re-creating lobby', { timeout: 30000 }, async () => {
+    const page = await browser.newPage()
+    await page.goto(BASE)
+    await page.waitForSelector('#name')
+
+    // Create first lobby
+    await page.fill('#name', 'Alice')
+    await page.fill('#lobby-id', 'firstLobby')
+    await page.click('#join')
+    await page.waitForSelector('#players li')
+
+    // Verify invite AI button is visible (Alice is creator)
+    const btn1 = await page.evaluate(() => {
+      const btn = document.getElementById('invite-ai')
+      return btn ? btn.style.display !== 'none' : false
+    })
+    expect(btn1).toBe(true)
+
+    // Leave the lobby
+    await page.click('#leave-lobby')
+    await page.waitForSelector('#modal-ok-btn', { timeout: 3000 })
+    await page.click('#modal-ok-btn')
+
+    // Wait for join form
+    await page.waitForFunction(() => {
+      const el = document.getElementById('join')
+      return el && !el.disabled
+    }, { timeout: 5000 })
+
+    // Create second lobby
+    await page.fill('#name', 'Alice')
+    await page.fill('#lobby-id', 'secondLobby')
+    await page.click('#join')
+    await page.waitForSelector('#players li')
+
+    // Verify invite AI button is STILL visible (Alice is creator again)
+    const btn2 = await page.evaluate(() => {
+      const btn = document.getElementById('invite-ai')
+      return btn ? btn.style.display !== 'none' : false
+    })
+    expect(btn2).toBe(true)
+
+    await page.close()
+  })
 })

@@ -589,8 +589,7 @@ function resetGameState(): void {
     joinButton.disabled = false;
     lobbyIdInput.disabled = false;
 
-    // Clear game state
-    myId = null;
+    // Clear game state (keep myId — persists across lobby sessions)
     currentTurn = -1;
     players = [];
     pendingWildCard = null;

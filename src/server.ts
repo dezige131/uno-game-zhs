@@ -728,10 +728,7 @@ wss.on('connection', (ws: WebSocket, _req: IncomingMessage) => {
         case 'join': {
           metadata.name = message.name;
           if (typeof message.lobbyId !== 'string' || !message.lobbyId.length) {
-            ws.send(JSON.stringify({
-              action: 'error',
-              message: ERR.NEED_LOBBY_NAME
-            } as const));
+            ws.send(JSON.stringify(errorResponse('NEED_LOBBY_NAME')));
             return;
           }
           let lobby = findOrCreateLobby(message.lobbyId);
@@ -788,10 +785,7 @@ wss.on('connection', (ws: WebSocket, _req: IncomingMessage) => {
               broadcastPlayers(message.lobbyId);
               return;
             }
-            ws.send(JSON.stringify({
-              action: 'error',
-              message: ERR.NAME_DUPLICATE
-            } as const));
+            ws.send(JSON.stringify(errorResponse('NAME_DUPLICATE')));
             return;
           }
 
@@ -815,17 +809,11 @@ wss.on('connection', (ws: WebSocket, _req: IncomingMessage) => {
           const lobby = findOrCreateLobby(metadata.lobbyId!);
           const creator = lobby.players.find(p => p.id === metadata.id);
           if (!creator || !creator.isCreator) {
-            ws.send(JSON.stringify({
-              action: 'error',
-              message: ERR.CREATOR_ONLY
-            } as const));
+            ws.send(JSON.stringify(errorResponse('CREATOR_ONLY')));
             return;
           }
           if (startedLobbies.has(lobby.id)) {
-            ws.send(JSON.stringify({
-              action: 'error',
-              message: ERR.GAME_ALREADY_STARTED
-            } as const));
+            ws.send(JSON.stringify(errorResponse('GAME_ALREADY_STARTED')));
             return;
           }
           const aiId = uuidv4();
@@ -846,18 +834,12 @@ wss.on('connection', (ws: WebSocket, _req: IncomingMessage) => {
           const lobby = findOrCreateLobby(metadata.lobbyId!);
           const creator = lobby.players.find(p => p.id === metadata.id);
           if (!creator || !creator.isCreator) {
-            ws.send(JSON.stringify({
-              action: 'error',
-              message: ERR.CREATOR_ONLY_AI_READY
-            } as const));
+            ws.send(JSON.stringify(errorResponse('CREATOR_ONLY_AI_READY')));
             return;
           }
           const aiPlayer = lobby.players.find(p => p.id === message.playerId && p.isAI);
           if (!aiPlayer) {
-            ws.send(JSON.stringify({
-              action: 'error',
-              message: ERR.AI_NOT_FOUND
-            } as const));
+            ws.send(JSON.stringify(errorResponse('AI_NOT_FOUND')));
             return;
           }
           aiPlayer.ready = !aiPlayer.ready;
@@ -870,25 +852,16 @@ wss.on('connection', (ws: WebSocket, _req: IncomingMessage) => {
           const lobby = findOrCreateLobby(metadata.lobbyId!);
           const creator = lobby.players.find(p => p.id === metadata.id);
           if (!creator || !creator.isCreator) {
-            ws.send(JSON.stringify({
-              action: 'error',
-              message: ERR.CREATOR_ONLY_KICK_AI
-            } as const));
+            ws.send(JSON.stringify(errorResponse('CREATOR_ONLY_KICK_AI')));
             return;
           }
           if (startedLobbies.has(lobby.id)) {
-            ws.send(JSON.stringify({
-              action: 'error',
-              message: ERR.GAME_ALREADY_STARTED
-            } as const));
+            ws.send(JSON.stringify(errorResponse('GAME_ALREADY_STARTED')));
             return;
           }
           const aiIndex = lobby.players.findIndex(p => p.id === message.playerId && p.isAI);
           if (aiIndex === -1) {
-            ws.send(JSON.stringify({
-              action: 'error',
-              message: ERR.AI_NOT_FOUND
-            } as const));
+            ws.send(JSON.stringify(errorResponse('AI_NOT_FOUND')));
             return;
           }
           clearAITimeout(lobby.players[aiIndex].id);
@@ -901,18 +874,12 @@ wss.on('connection', (ws: WebSocket, _req: IncomingMessage) => {
           const lobby = findOrCreateLobby(metadata.lobbyId!);
           const from = lobby.players.find(p => p.id === metadata.id);
           if (!from || !from.isCreator) {
-            ws.send(JSON.stringify({
-              action: 'error',
-              message: ERR.CREATOR_ONLY_TRANSFER
-            } as const));
+            ws.send(JSON.stringify(errorResponse('CREATOR_ONLY_TRANSFER')));
             return;
           }
           const to = lobby.players.find(p => p.id === message.playerId);
           if (!to || to.isAI || to.disconnected) {
-            ws.send(JSON.stringify({
-              action: 'error',
-              message: ERR.TARGET_INVALID
-            } as const));
+            ws.send(JSON.stringify(errorResponse('TARGET_INVALID')));
             return;
           }
           from.isCreator = false;
@@ -1173,10 +1140,7 @@ wss.on('connection', (ws: WebSocket, _req: IncomingMessage) => {
           const lobby1 = findOrCreateLobby(metadata.lobbyId!);
           const player1 = lobby1.players.find(p => p.id === metadata.id);
           if (!player1) {
-            ws.send(JSON.stringify({
-              action: 'error',
-              message: ERR.PLAYER_NOT_FOUND
-            } as const));
+            ws.send(JSON.stringify(errorResponse('PLAYER_NOT_FOUND')));
             return;
           }
           broadcastWin(metadata.lobbyId!, player1.name);
