@@ -1060,4 +1060,70 @@ describe('UNO Client', () => {
     await pageA.close()
     await pageB.close()
   })
+
+  it('two tabs have isolated sessions, name persists across tabs', { timeout: 30000 }, async () => {
+    const ctx = await browser.newContext()
+    const pageA = await ctx.newPage()
+    await pageA.goto(BASE)
+    await pageA.waitForSelector('#name')
+
+    // Tab A types a name
+    await pageA.fill('#name', 'Alice')
+    const nameA = await pageA.evaluate(() => store.get('unoPlayerName'))
+    expect(nameA).toBe('Alice')
+
+    // Tab B opens — name pre-filled from localStorage
+    const pageB = await ctx.newPage()
+    await pageB.goto(BASE)
+    await pageB.waitForSelector('#name')
+    const nameB = await pageB.$eval('#name', el => el.value)
+    expect(nameB).toBe('Alice')
+
+    // Tab B changes name — should save to localStorage (shared)
+    await pageB.fill('#name', 'Bob')
+    const nameB2 = await pageB.evaluate(() => store.get('unoPlayerName'))
+    expect(nameB2).toBe('Bob')
+
+    // Tab A's store.get should still read from its sessionStorage (Alice)
+    // because sessionStorage is per-tab and gets priority
+    const nameA2 = await pageA.evaluate(() => store.get('unoPlayerName'))
+    expect(nameA2).toBe('Alice')
+
+    await pageA.close()
+    await pageB.close()
+  })
+
+  it('new tab does not auto-join previous tab lobby', { timeout: 30000 }, async () => {
+    const ctx = await browser.newContext()
+    const pageA = await ctx.newPage()
+    await pageA.goto(BASE)
+    await pageA.waitForSelector('#name')
+
+    // Tab A joins lobby ALPHA
+    await pageA.fill('#name', 'Alice')
+    await pageA.fill('#lobby-id', 'ALPHA')
+    await pageA.click('#join')
+    await pageA.waitForSelector('#players li')
+
+    // Open tab B — should NOT auto-join ALPHA
+    const pageB = await ctx.newPage()
+    await pageB.goto(BASE)
+    await pageB.waitForSelector('#name')
+
+    // Tab B should be at join form, not in a lobby
+    await pageB.waitForTimeout(1500)
+    const inLobby = await pageB.evaluate(() => {
+      const joinBtn = document.getElementById('join')
+      const players = document.querySelectorAll('#players li')
+      return joinBtn && !joinBtn.disabled && players.length === 0
+    })
+    expect(inLobby).toBe(true)
+
+    // Tab B's name input should be pre-filled from localStorage
+    const nameVal = await pageB.$eval('#name', el => el.value)
+    expect(nameVal).toBe('Alice')
+
+    await pageA.close()
+    await pageB.close()
+  })
 })

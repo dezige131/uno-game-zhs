@@ -66,7 +66,77 @@ interface ServerMessage {
   log?: object[];
 }
 
-// ── Logging ──────────────────────────────────────────────
+// ── Multi-tab slot manager (BroadcastChannel) ────────────
+const CH_NAME = 'uno-game';
+let tabSlot = 0;
+
+function slotKey(k: string): string { return `${k}-${tabSlot || 1}`; }
+
+const store = {
+  get(k: string): string | null {
+    if (tabSlot) return localStorage.getItem(slotKey(k)) ?? sessionStorage.getItem(k);
+    return sessionStorage.getItem(k) ?? localStorage.getItem(k);
+  },
+  set(k: string, v: string): void {
+    if (tabSlot) {
+      localStorage.setItem(slotKey(k), v);
+      sessionStorage.setItem(k, v);
+    } else {
+      sessionStorage.setItem(k, v);
+    }
+  },
+  remove(k: string): void {
+    localStorage.removeItem(slotKey(k));
+    sessionStorage.removeItem(k);
+  },
+};
+
+// ── BroadcastChannel slot negotiation ────────────────────
+const ch = new BroadcastChannel(CH_NAME);
+let isHost = false;
+const activeSlots = new Set<number>();
+
+ch.onmessage = (e: MessageEvent) => {
+  const d = e.data;
+  if (d.type === 'request-slot' && isHost) {
+    let s = 1;
+    while (activeSlots.has(s)) s++;
+    activeSlots.add(s);
+    ch.postMessage({ type: 'assign-slot', slot: s });
+  } else if (d.type === 'request-slot') {
+    // Not host, forward to host (handled by host's handler above)
+  } else if (d.type === 'assign-slot' && d.slot) {
+    tabSlot = d.slot;
+    sessionStorage.setItem('unoSlot', String(tabSlot));
+    activeSlots.add(tabSlot);
+  } else if (d.type === 'host-ping') {
+    // Host is alive, no action needed
+  } else if (d.type === 'host-closing') {
+    if (d.slot) activeSlots.delete(d.slot);
+  }
+};
+
+ch.onmessageerror = () => { /* ignore */ };
+
+// Become host or request slot
+setTimeout(() => {
+  ch.postMessage({ type: 'request-slot' });
+  // If no response within 200ms, become host
+  setTimeout(() => {
+    if (tabSlot !== 0) return;
+    isHost = true;
+    tabSlot = 1;
+    activeSlots.add(1);
+    sessionStorage.setItem('unoSlot', '1');
+    // Heartbeat
+    setInterval(() => { if (isHost) ch.postMessage({ type: 'host-ping' }); }, 3000);
+    // On close, announce
+    window.addEventListener('beforeunload', () => {
+      ch.postMessage({ type: 'host-closing', slot: tabSlot });
+      ch.close();
+    });
+  }, 200);
+}, 50);
 const CLIENT_PREFIX = '[client]';
 function clientLog(msg: string, ...args: unknown[]): void {
   console.log(`${CLIENT_PREFIX} ${msg}`, ...args);
@@ -205,14 +275,17 @@ function connect(): void {
     loadErrorDefs();
     const btn = document.getElementById('dev-disconnect-btn');
     if (btn) btn.textContent = '断开';
-    const savedId = localStorage.getItem('unoPlayerId');
+    const savedId = store.get('unoPlayerId');
     clientLog(`onopen savedId=${savedId ? savedId.slice(0, 8) : null} actionQueue=${actionQueue.length}`);
+    // Always pre-fill name/lobby from storage
+    nameInput.value = store.get('unoPlayerName') || '';
+    lobbyIdInput.value = store.get('unoLobbyId') || '';
     if (savedId) {
       justReconnected = true;
       sendMessage({ action: 'reconnect', playerId: savedId });
-    } else if (!localStorage.getItem('unoLeftLobby')) {
-      const savedName = localStorage.getItem('unoPlayerName');
-      const savedLobbyId = localStorage.getItem('unoLobbyId');
+    } else if (!store.get('unoLeftLobby')) {
+      const savedName = store.get('unoPlayerName');
+      const savedLobbyId = '';
       if (savedName && savedLobbyId) {
         const msg: Record<string, string> = { action: 'join', name: savedName, lobbyId: savedLobbyId };
         if (savedId) msg.playerId = savedId;
@@ -221,9 +294,7 @@ function connect(): void {
       }
       hideDisconnectedToast();
     } else {
-      localStorage.removeItem('unoLeftLobby');
-      nameInput.value = localStorage.getItem('unoPlayerName') || '';
-      lobbyIdInput.value = localStorage.getItem('unoLobbyId') || '';
+      store.remove('unoLeftLobby');
       hideDisconnectedToast();
     }
   };
@@ -237,14 +308,14 @@ function connect(): void {
         clientLog('[init] myId =', myId);
         if (message.reconnectLost) {
           clientLog('[init] reconnect lost, showing join form');
-          localStorage.removeItem('unoPlayerId');
-          localStorage.removeItem('unoInLobby');
-          localStorage.removeItem('unoInGame');
-          localStorage.setItem('unoLeftLobby', 'true');
+          store.remove('unoPlayerId');
+          store.remove('unoInLobby');
+          store.remove('unoInGame');
+          store.set('unoLeftLobby', 'true');
           myLobbyId = null;
           resetGameState();
-        } else if (!localStorage.getItem('unoPlayerId')) {
-          localStorage.setItem('unoPlayerId', myId);
+        } else if (!store.get('unoPlayerId')) {
+          store.set('unoPlayerId', myId);
         }
         if (message.dev) setupDevPanel();
         hideDisconnectedToast();
@@ -263,9 +334,9 @@ function connect(): void {
           if (refreshErrorCount >= 3) {
             const reset = await showConfirm('多次重连失败，是否重置连接状态？（重置不会清除玩家名称和大厅 ID）');
             if (reset) {
-              localStorage.removeItem('unoInLobby');
-              localStorage.removeItem('unoInGame');
-              localStorage.removeItem('unoPlayerId');
+              store.remove('unoInLobby');
+              store.remove('unoInGame');
+              store.remove('unoPlayerId');
             }
             refreshErrorCount = 0;
             nameInput.disabled = false;
@@ -276,9 +347,9 @@ function connect(): void {
         }
         showAlert(msg).then(() => {
           if (needRefresh) {
-            localStorage.removeItem('unoInLobby');
-            localStorage.removeItem('unoInGame');
-            localStorage.removeItem('unoPlayerId');
+            store.remove('unoInLobby');
+            store.remove('unoInGame');
+            store.remove('unoPlayerId');
           }
           nameInput.disabled = false;
           lobbyIdInput.disabled = false;
@@ -296,8 +367,8 @@ function connect(): void {
         gameState = message.gameState || 0;
         drawingChain = message.drawingCount || 0;
         myLobbyId = message.lobbyId || null;
-        localStorage.setItem('unoPlayerId', myId!);
-        localStorage.setItem('unoInLobby', '1');
+        store.set('unoPlayerId', myId!);
+        store.set('unoInLobby', '1');
         flushQueue();
         clientLog('[players] myId =', myId, 'players =', players.map(p => ({ id: p.id, name: p.name })));
         updatePlayers(players, currentTurn);
@@ -310,7 +381,7 @@ function connect(): void {
         hideDisconnectedToast();
         flushQueue();
         myId = message.id!;
-        localStorage.setItem('unoPlayerId', myId);
+        store.set('unoPlayerId', myId);
         isSpectating = message.spectator || false;
         clientLog('[start] myId =', myId, 'players =', (message.players || []).map(p => ({ id: p.id, name: p.name })), 'turn =', message.turn);
         lobbyDiv.style.display = 'none';
@@ -369,17 +440,17 @@ function connect(): void {
           sendMessage({ action: 'spectate_accept' });
         } else {
           sendMessage({ action: 'leave' });
-          localStorage.removeItem('unoPlayerId');
-          localStorage.removeItem('unoInLobby');
-          localStorage.removeItem('unoInGame');
+          store.remove('unoPlayerId');
+          store.remove('unoInLobby');
+          store.remove('unoInGame');
           resetGameState();
         }
         return;
       }
 
       case 'surrendered':
-        localStorage.removeItem('unoInLobby');
-        localStorage.removeItem('unoInGame');
+        store.remove('unoInLobby');
+        store.remove('unoInGame');
         resetGameState();
         break;
 
@@ -397,8 +468,8 @@ function connect(): void {
 
       case 'game_aborted':
         if (isSpectating) {
-          localStorage.removeItem('unoInLobby');
-          localStorage.removeItem('unoInGame');
+          store.remove('unoInLobby');
+          store.remove('unoInGame');
           resetGameState();
         } else {
           showGameAborted();
@@ -568,14 +639,14 @@ function showLobbyInfo(lobbyId: string): void {
     lobbyInfo.style.display = 'block';
     hideJoinForm();
 
-    localStorage.setItem('unoLobbyId', lobbyId);
-    localStorage.setItem('unoPlayerName', nameInput.value);
+    store.set('unoPlayerName', nameInput.value);
+    if (lobbyId) store.set('unoLobbyId', lobbyId);
   }
 }
 
 function attemptRejoin(): void {
-  const savedLobbyId = localStorage.getItem('unoLobbyId');
-  const savedPlayerName = localStorage.getItem('unoPlayerName');
+  const savedLobbyId = '';
+  const savedPlayerName = store.get('unoPlayerName');
 
   if (savedLobbyId && savedPlayerName) {
     lobbyIdInput.value = savedLobbyId;
@@ -584,8 +655,8 @@ function attemptRejoin(): void {
 }
 
 function resetGameState(): void {
-  localStorage.removeItem('unoInLobby');
-  localStorage.removeItem('unoInGame');
+  store.remove('unoInLobby');
+  store.remove('unoInGame');
   if (countdownInterval) { clearInterval(countdownInterval); countdownInterval = null; }
   // Reset to lobby
   lobbyDiv.style.display = 'block';
@@ -593,8 +664,7 @@ function resetGameState(): void {
 
   requestAnimationFrame(() => {
 
-    nameInput.value = (localStorage.getItem('unoPlayerName') || '').trim();
-    lobbyIdInput.value = localStorage.getItem('unoLobbyId') || '';
+    nameInput.value = (store.get('unoPlayerName') || '').trim();
     nameInput.disabled = false;
     joinButton.disabled = false;
     lobbyIdInput.disabled = false;
@@ -1031,14 +1101,14 @@ joinButton.addEventListener('click', async () => {
   lobbyIdInput.disabled = true;
   joinButton.disabled = true;
 
-  const savedId = localStorage.getItem('unoPlayerId');
+  const savedId = store.get('unoPlayerId');
   const message: Record<string, string> = { action: 'join', name: name };
   if (lobbyId) message.lobbyId = lobbyId;
   if (savedId) message.playerId = savedId;
   // Save immediately so auto-reconnect can find these even if WS closes
   // before the first players/start message arrives
-  localStorage.setItem('unoPlayerName', name);
-  if (lobbyId) localStorage.setItem('unoLobbyId', lobbyId);
+  store.set('unoPlayerName', name);
+  if (lobbyId) store.set('unoLobbyId', lobbyId);
   sendMessage(message);
 });
 
@@ -1119,10 +1189,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Save name/lobby ID to localStorage on each keystroke
   nameInput.addEventListener('input', () => {
-    localStorage.setItem('unoPlayerName', nameInput.value);
+    store.set('unoPlayerName', nameInput.value);
   });
   lobbyIdInput.addEventListener('input', () => {
-    localStorage.setItem('unoLobbyId', lobbyIdInput.value.toUpperCase());
+    store.set('unoLobbyId', lobbyIdInput.value.toUpperCase());
   });
 
   getLeaveSpectateBtn()?.addEventListener('click', async () => {
@@ -1150,13 +1220,14 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   document.getElementById('about-close-btn')!.addEventListener('click', closeAbout);
   document.getElementById('about-clear-btn')!.addEventListener('click', async () => {
-    const ok = await showConfirm('确定要清除所有本地存储状态吗？此操作不可撤销。');
+    const ok = await showConfirm('确定要清除当前标签页的存储状态吗？此操作不可撤销。');
     if (!ok) return;
+    ['unoPlayerName', 'unoPlayerId', 'unoInLobby', 'unoInGame', 'unoLeftLobby'].forEach(k => {
+      sessionStorage.removeItem(k); localStorage.removeItem(k);
+    });
     const msg = document.getElementById('about-clear-msg')!;
-    const delay = msg.style.display === 'none' ? 0 : 500
-    msg.style.display = 'none';
-    localStorage.clear();
-    setTimeout(() => { msg.style.display = 'block'; }, delay);
+    msg.style.display = 'block';
+    setTimeout(() => { msg.style.display = 'none'; }, 2000);
   });
 
   // Rules modal
@@ -1198,7 +1269,7 @@ function copyLobbyId(): void {
 }
 
 function applyCardLayout(): void {
-  if (localStorage.getItem('unoCardLayout') !== 'wrap') {
+  if (store.get('unoCardLayout') !== 'wrap') {
     playerHandDiv.classList.add('scroll-mode');
     cardLayoutToggle.textContent = '切换到换行排列';
   } else {
@@ -1217,7 +1288,7 @@ function updateScrollAlignment(): void {
 cardLayoutToggle.addEventListener('click', () => {
   playerHandDiv.classList.toggle('scroll-mode');
   const isScroll = playerHandDiv.classList.contains('scroll-mode');
-  localStorage.setItem('unoCardLayout', isScroll ? 'scroll' : 'wrap');
+  store.set('unoCardLayout', isScroll ? 'scroll' : 'wrap');
   cardLayoutToggle.textContent = isScroll ? '切换到换行排列' : '切换到滚动排列';
   updateScrollAlignment();
 });
@@ -1305,10 +1376,10 @@ async function leaveLobby(): Promise<void> {
   if (!confirmed) return;
 
   sendMessage({ action: 'leave' });
-  localStorage.removeItem('unoPlayerId');
-  localStorage.removeItem('unoInLobby');
-  localStorage.removeItem('unoInGame');
-  localStorage.setItem('unoLeftLobby', 'true');
+  store.remove('unoPlayerId');
+  store.remove('unoInLobby');
+  store.remove('unoInGame');
+  store.set('unoLeftLobby', 'true');
   requestAnimationFrame(() => resetGameState());
 }
 
@@ -1352,12 +1423,12 @@ let isGameOverShowing = false;
 function showGameOver(winnerName: string): void {
   if (isGameOverShowing) return;
   isGameOverShowing = true;
-  localStorage.removeItem('unoInLobby');
-  localStorage.removeItem('unoInGame');
+  store.remove('unoInLobby');
+  store.remove('unoInGame');
 
   const myPlayer = players.find(p => p.id === myId);
   const isWinner = winnerName === (myPlayer ? myPlayer.name : '');
-  const myName = localStorage.getItem('unoPlayerName') || '';
+  const myName = store.get('unoPlayerName') || '';
 
   if (isWinner) {
     gameOverIcon.innerHTML = '<img src="/icons/trophy.svg" style="width:64px;height:64px;">';
@@ -1379,8 +1450,8 @@ function showGameOver(winnerName: string): void {
 function showGameAborted(): void {
   if (isGameOverShowing) return;
   isGameOverShowing = true;
-  localStorage.removeItem('unoInLobby');
-  localStorage.removeItem('unoInGame');
+  store.remove('unoInLobby');
+  store.remove('unoInGame');
 
   gameOverIcon.innerHTML = '<img src="/icons/bolt.svg" style="width:64px;height:64px;">';
   gameOverTitle.textContent = '对局中止';
@@ -1404,7 +1475,10 @@ function showReaction(playerId: string, type: string, content: string): void {
     const iconMap: Record<string, string> = {
       '😂': 'laugh', '😡': 'angry', '😱': 'shock', '👍': 'like',
       '👎': 'dislike', '🎉': 'party', '😭': 'cry', '🔥': 'fire'
-    };
+};
+
+// ── Logging ──────────────────────────────────────────────
+const CLIENT_PREFIX = '[client]';
     const icon = iconMap[content] || 'laugh';
     popup.innerHTML = `<img src="/icons/${icon}.svg" style="width:32px;height:32px;">`;
   }
