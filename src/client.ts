@@ -21,6 +21,8 @@ const reactionSendBtn = document.getElementById('reaction-send-btn') as HTMLButt
 const reactionEmojis = document.getElementById('reaction-emojis') as HTMLDivElement;
 const cardLayoutToggle = document.getElementById('card-layout-toggle') as HTMLButtonElement;
 
+let storageCleared = false
+
 interface Card {
   color?: string;
   type: string;
@@ -386,6 +388,8 @@ function connect(): void {
         clientLog('[start] myId =', myId, 'players =', (message.players || []).map(p => ({ id: p.id, name: p.name })), 'turn =', message.turn);
         lobbyDiv.style.display = 'none';
         gameDiv.style.display = 'block';
+        document.getElementById('about-clear-btn')!.style.display = 'none';
+        document.getElementById('about-storage-title')!.style.display = 'none';
         players = message.players || [];
         currentTurn = message.turn || 0;
         gameDirection = message.direction || 1;
@@ -449,8 +453,10 @@ function connect(): void {
       }
 
       case 'surrendered':
-        store.remove('unoInLobby');
-        store.remove('unoInGame');
+        localStorage.removeItem('unoInLobby');
+        localStorage.removeItem('unoInGame');
+        document.getElementById('about-clear-btn')!.style.display = '';
+        document.getElementById('about-storage-title')!.style.display = '';
         resetGameState();
         break;
 
@@ -655,8 +661,10 @@ function attemptRejoin(): void {
 }
 
 function resetGameState(): void {
-  store.remove('unoInLobby');
-  store.remove('unoInGame');
+  localStorage.removeItem('unoInLobby');
+  localStorage.removeItem('unoInGame');
+  document.getElementById('about-clear-btn')!.style.display = '';
+  document.getElementById('about-storage-title')!.style.display = '';
   if (countdownInterval) { clearInterval(countdownInterval); countdownInterval = null; }
   // Reset to lobby
   lobbyDiv.style.display = 'block';
@@ -1216,15 +1224,22 @@ document.addEventListener('DOMContentLoaded', () => {
       aboutBox.removeEventListener('animationend', h);
       aboutOverlay.classList.add('hidden');
       aboutOverlay.style.display = '';
+      if (storageCleared) {
+        location.reload()
+      }
     });
   }
   document.getElementById('about-close-btn')!.addEventListener('click', closeAbout);
   document.getElementById('about-clear-btn')!.addEventListener('click', async () => {
     const ok = await showConfirm('确定要清除当前标签页的存储状态吗？此操作不可撤销。');
     if (!ok) return;
-    ['unoPlayerName', 'unoPlayerId', 'unoInLobby', 'unoInGame', 'unoLeftLobby'].forEach(k => {
-      sessionStorage.removeItem(k); localStorage.removeItem(k);
+    // Clear all known keys for current slot and plain keys
+    const s = tabSlot || 1;
+    ['unoPlayerName', 'unoLobbyId', 'unoPlayerId', 'unoInLobby', 'unoInGame', 'unoLeftLobby', 'unoCardLayout'].forEach(k => {
+      [`${k}-${s}`, k].forEach(sk => { sessionStorage.removeItem(sk); localStorage.removeItem(sk); });
     });
+    sessionStorage.removeItem('unoSlot'); tabSlot = 0; storageCleared = true;
+    if (isHost) { ch.postMessage({ type: 'host-closing', slot: s }); isHost = false; }
     const msg = document.getElementById('about-clear-msg')!;
     msg.style.display = 'block';
     setTimeout(() => { msg.style.display = 'none'; }, 2000);
@@ -1475,10 +1490,10 @@ function showReaction(playerId: string, type: string, content: string): void {
     const iconMap: Record<string, string> = {
       '😂': 'laugh', '😡': 'angry', '😱': 'shock', '👍': 'like',
       '👎': 'dislike', '🎉': 'party', '😭': 'cry', '🔥': 'fire'
-};
+    };
 
-// ── Logging ──────────────────────────────────────────────
-const CLIENT_PREFIX = '[client]';
+    // ── Logging ──────────────────────────────────────────────
+    const CLIENT_PREFIX = '[client]';
     const icon = iconMap[content] || 'laugh';
     popup.innerHTML = `<img src="/icons/${icon}.svg" style="width:32px;height:32px;">`;
   }
