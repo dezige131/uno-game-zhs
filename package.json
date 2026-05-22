@@ -1,6 +1,6 @@
 {
   "name": "uno",
-  "version": "1.0.0",
+  "version": "0.1.0.0",
   "scripts": {
     "build": "tsc -p tsconfig.server.json && tsc -p tsconfig.client.json && npx terser dist/server.js -c -m -o dist/server.js && npx terser dist/client.js -c -m -o dist/client.js && npx terser dist/aiplayer.js -c -m -o dist/aiplayer.js && cp public/index.html dist/ && cp public/style.css dist/ && cp -r public/icons dist/",
     "start": "node dist/server.js",
@@ -24,6 +24,7 @@
     "nodemon": "^3.1.10",
     "pkg": "^5.8.1",
     "playwright": "^1.60.0",
+    "resedit-cli": "^3.1.0",
     "terser": "^5.48.0",
     "tsx": "^4.22.3",
     "typescript": "^5.4.0",
@@ -46,26 +47,12 @@
   },
   "pefile": {
     "version-info": {
-      "RT_VERSION": {
-        "#1": {
-          "0000": {
-            "fixed": {
-              "file_version": "1.0.0.0",
-              "product_version": "1.0.0.0"
-            },
-            "info": {
-              "0409": {
-                "CompanyName": "miruku (lovemilk)",
-                "ProductName": "UNO Server",
-                "FileDescription": "UNO Game Server",
-                "LegalCopyright": "Copyright (C) 2026 miruku (lovemilk)",
-                "OriginalFilename": "uno-server.exe",
-                "InternalName": "uno-server"
-              }
-            }
-          }
-        }
-      }
+      "CompanyName": "miruku (lovemilk)",
+      "ProductName": "UNO Game Server",
+      "LegalCopyright": "Copyright (C) 2026 miruku (lovemilk), BSD 3-Clause License",
+      "FileDescription": "UNO Game Server",
+      "OriginalFilename": "uno-server.exe",
+      "InternalName": "uno-server"
     }
   }
 }

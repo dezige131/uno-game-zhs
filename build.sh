@@ -54,13 +54,7 @@ if [ "$PLATFORM" = "win" ]; then
 
     $PKG . --targets "node12-win-${ARCH}" --output "$outfile" --public
 
-    case "$ARCH" in
-      "ia32")  export GOARCH="386" ;;
-      "arm64") export GOARCH="arm64" ;;
-      *)       export GOARCH="amd64" ;;
-    esac
-    
-    export GOOS="windows"
+    scripts/write_copyright "$outfile"
 else
     outfile="${BIN_DIR}uno-server"
     # Fallback to npx pkg for non-Windows platforms if they are still Node.js based
