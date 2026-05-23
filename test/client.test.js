@@ -1181,4 +1181,63 @@ describe('UNO Client', () => {
     await pageA.close()
     await pageB.close()
   })
+
+  it('joining AI-only lobby does not show spectate offer', { timeout: 30000 }, async () => {
+    const pageA = await browser.newPage()
+    await pageA.goto(BASE)
+    await pageA.waitForSelector('#name')
+
+    const lobbyId = 'aionly-' + Date.now()
+    // A creates room, adds AI, starts game
+    await pageA.fill('#name', 'Alice')
+    await pageA.fill('#lobby-id', lobbyId)
+    await pageA.click('#join')
+    await pageA.waitForSelector('#players li')
+    await pageA.click('#invite-ai')
+    await pageA.waitForFunction(() => document.querySelectorAll('#players li').length === 2)
+    await pageA.click('#ready')
+    await pageA.waitForFunction(() => {
+      const el = document.getElementById('game')
+      return el && el.style.display !== 'none'
+    }, { timeout: 10000 })
+
+    // A surrenders — AI wins
+    await pageA.click('#surrender-btn')
+    await pageA.waitForSelector('#modal-ok-btn', { timeout: 3000 })
+    await pageA.click('#modal-ok-btn')
+    await pageA.waitForFunction(() => {
+      const el = document.getElementById('game-over-overlay')
+      return el && !el.classList.contains('hidden')
+    }, { timeout: 5000 })
+
+    // Dismiss game-over overlay
+    await pageA.click('#game-over-btn')
+    await pageA.waitForFunction(() => {
+      const el = document.getElementById('join')
+      return el && !el.disabled
+    }, { timeout: 5000 })
+
+    // B tries to join same lobby — should create fresh, no spectate offer
+    const pageB = await browser.newPage()
+    await pageB.goto(BASE)
+    await pageB.waitForSelector('#name')
+    await pageB.fill('#name', 'Bob')
+    await pageB.fill('#lobby-id', lobbyId)
+    await pageB.click('#join')
+
+    // B should see players list (joined fresh lobby), NOT spectate dialog
+    await pageB.waitForSelector('#players li', { timeout: 5000 })
+    const bHasPlayers = await pageB.evaluate(() => document.querySelectorAll('#players li').length > 0)
+    expect(bHasPlayers).toBe(true)
+
+    // Verify no spectate dialog appeared
+    const spectateShown = await pageB.evaluate(() => {
+      const overlay = document.getElementById('modal-overlay')
+      return overlay && !overlay.classList.contains('hidden')
+    })
+    expect(spectateShown).toBe(false)
+
+    await pageA.close()
+    await pageB.close()
+  })
 })

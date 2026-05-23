@@ -133,12 +133,12 @@ const httpServer = new Server((req: IncomingMessage, res: ServerResponse) => {
     return res.end(content);
   }
 
-  if (isDev() && url === '/errors') {
+  if (url === '/errors') {
     res.setHeader('Content-Type', 'application/json');
     return res.end(JSON.stringify(ERR));
   }
 
-  if (isDev() && url === '/constants') {
+  if (url === '/constants') {
     res.setHeader('Content-Type', 'application/json');
     return res.end(JSON.stringify({
       NAME_LENGTH_MIN, NAME_LENGTH_MAX, MAX_HAND_CARDS,
@@ -838,7 +838,12 @@ wss.on('connection', (ws: WebSocket, _req: IncomingMessage) => {
               }));
               return;
             }
-            ws.send(JSON.stringify({ action: 'spectate_offer', lobbyId: lobby.id }));
+            // No real players left — abort and let them create a fresh lobby
+            if (!lobby.players.some(p => !p.isAI)) {
+              broadcastGameAborted(lobby.id, '');
+            } else {
+              ws.send(JSON.stringify({ action: 'spectate_offer', lobbyId: lobby.id }));
+            }
             return;
           }
 
@@ -1120,31 +1125,31 @@ wss.on('connection', (ws: WebSocket, _req: IncomingMessage) => {
 
           const remaining = sLobby.players.filter(p => p.id !== metadata.id);
           const realRemaining = remaining.filter(p => !p.isAI);
-          // No human players left → game ends with nobody winning
-          if (realRemaining.length === 0) {
+          // No human players left AND multiple opponents → nobody won
+          if (realRemaining.length === 0 && remaining.length > 1) {
+            const lobbyId = metadata.lobbyId!;
             if (surrenderPlayer.hand) sLobby.game.discardPile.push(...surrenderPlayer.hand);
             const idx = sLobby.players.indexOf(surrenderPlayer);
             sLobby.players.splice(idx, 1);
             metadata.lobbyId = null;
             sessions.delete(surrenderPlayer.id);
             ws.send(JSON.stringify({ action: 'win', winner: '' }));
-            broadcastToLobby(metadata.lobbyId!, { action: 'win', winner: '' });
-            // Reset lobby state
-            for (const [, m] of clients) m.lobbyId === metadata.lobbyId && (m.lobbyId = null);
+            broadcastToLobby(lobbyId, { action: 'win', winner: '' });
+            for (const [, m] of clients) m.lobbyId === lobbyId && (m.lobbyId = null);
             sLobby.players = [];
             sLobby.game = { deck: [], discardPile: [], turn: 0, direction: 1, started: false, state: LobbyGameState.normal, drawingCount: 0 };
-            startedLobbies.delete(metadata.lobbyId!);
-            clearAllAITimeouts(metadata.lobbyId!);
+            startedLobbies.delete(lobbyId);
+            clearAllAITimeouts(lobbyId);
             return;
           }
-          // Only 1 opponent real player → standard surrender, opponent wins
-          if (realRemaining.length <= 1 && remaining.length <= 1) {
-            const winner = realRemaining.find(p => !p.isAI) || remaining[0];
+          // Single opponent → standard surrender, opponent wins (even if AI)
+          if (remaining.length <= 1) {
+            const winner = remaining[0];
             if (winner) broadcastWin(metadata.lobbyId!, winner.name);
             return;
           }
 
-          // >2 players: offer spectate, only remove if declined
+          // >2 players: offer spectate
           ws.send(JSON.stringify({ action: 'surrender_offer' }));
           return;
         }

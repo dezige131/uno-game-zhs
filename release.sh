@@ -42,8 +42,7 @@ fi
 git tag -a "${tag_name}" -m "release version ${version}"
 
 # 4. push the new tag to remote repository
-# using -f (--force) to forcefully overwrite the remote tag and break the loop
-git push -f origin "${tag_name}"
+git push origin "${tag_name}"
 
 # 5. invoke the build script to generate artifacts
 echo "starting build process..."
