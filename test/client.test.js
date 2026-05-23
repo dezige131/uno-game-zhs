@@ -1240,4 +1240,107 @@ describe('UNO Client', () => {
     await pageA.close()
     await pageB.close()
   })
+
+  it('wild color picker scrolls into view when shown', { timeout: 30000 }, async () => {
+    const page = await browser.newPage()
+    await page.goto(BASE)
+    await page.waitForSelector('#name')
+
+    // Create lobby with AI and start game
+    await page.fill('#name', 'Test')
+    await page.fill('#lobby-id', 'wildscroll')
+    await page.click('#join')
+    await page.waitForSelector('#players li')
+    await page.click('#invite-ai')
+    await page.waitForFunction(() => document.querySelectorAll('#players li').length === 2)
+    await page.click('#ready')
+    await page.waitForFunction(() => {
+      const el = document.getElementById('game')
+      return el && el.style.display !== 'none'
+    }, { timeout: 10000 })
+
+    // Scroll to bottom so the picker would be off-screen
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight))
+    await page.waitForTimeout(300)
+
+    // Find and click a wild card
+    const clickedWild = await page.evaluate(() => {
+      const cards = document.querySelectorAll('#player-hand .card')
+      for (let i = 0; i < cards.length; i++) {
+        const type = cards[i].getAttribute('data-type')
+        if (type === 'wild' || type === 'wild4') {
+          cards[i].dispatchEvent(new MouseEvent('click', { bubbles: true }))
+          return true
+        }
+      }
+      return false
+    })
+
+    if (clickedWild) {
+      await page.waitForTimeout(500)
+      // Color picker should be visible and in viewport
+      const inView = await page.evaluate(() => {
+        const picker = document.getElementById('wild-color-picker')
+        if (!picker || picker.style.display === 'none') return false
+        const rect = picker.getBoundingClientRect()
+        return rect.top >= -50 && rect.bottom <= window.innerHeight + 50
+      })
+      expect(inView).toBe(true)
+    }
+
+    await page.close()
+  })
+
+  it('wild color picker scrolls back on cancel, not on manual scroll', { timeout: 30000 }, async () => {
+    const page = await browser.newPage()
+    await page.goto(BASE)
+    await page.waitForSelector('#name')
+
+    await page.fill('#name', 'Test')
+    await page.fill('#lobby-id', 'wcancel')
+    await page.click('#join')
+    await page.waitForSelector('#players li')
+    await page.click('#invite-ai')
+    await page.waitForFunction(() => document.querySelectorAll('#players li').length === 2)
+    await page.click('#ready')
+    await page.waitForFunction(() => {
+      const el = document.getElementById('game')
+      return el && el.style.display !== 'none'
+    }, { timeout: 10000 })
+
+    // Record initial scroll position
+    const initialY = await page.evaluate(() => window.scrollY)
+
+    // Find and click a wild card
+    const found = await page.evaluate(() => {
+      const cards = document.querySelectorAll('#player-hand .card')
+      for (let i = 0; i < cards.length; i++) {
+        if (cards[i].getAttribute('data-type') === 'wild' || cards[i].getAttribute('data-type') === 'wild4') {
+          cards[i].dispatchEvent(new MouseEvent('click', { bubbles: true }))
+          return true
+        }
+      }
+      return false
+    })
+
+    if (found) {
+      await page.waitForTimeout(800) // wait for smooth scroll
+      const afterShowY = await page.evaluate(() => window.scrollY)
+      // Picker should have scrolled to it — position changed from initial
+      expect(Math.abs(afterShowY - initialY)).toBeGreaterThan(50)
+
+      // Manually scroll somewhere else
+      await page.evaluate(() => window.scrollTo(0, 500))
+      await page.waitForTimeout(300)
+
+      // Click cancel — should NOT scroll back because user scrolled manually
+      await page.click('#cancel-wild-btn')
+      await page.waitForTimeout(500)
+      const afterCancelY = await page.evaluate(() => window.scrollY)
+      // Should be near 500 (manual scroll pos), not back to initial
+      expect(Math.abs(afterCancelY - 500)).toBeLessThan(200)
+    }
+
+    await page.close()
+  })
 })

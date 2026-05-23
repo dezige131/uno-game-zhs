@@ -964,14 +964,34 @@ function getCurrentHand(): Card[] {
   return myHand;
 }
 
+let wildPickerScrollY = 0;
+let onWildPickerScroll: (() => void) | null = null;
+
 function showWildColorPicker(card: Card): void {
   pendingWildCard = card;
+  wildPickerScrollY = window.scrollY;
   wildColorPicker.style.display = 'block';
+  requestAnimationFrame(() => {
+    wildColorPicker.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    // Attach manual scroll listener after auto-scroll settles
+    setTimeout(() => {
+      onWildPickerScroll = () => { wildPickerScrollY = 0; };
+      window.addEventListener('scroll', onWildPickerScroll, { once: true });
+    }, 600);
+  });
 }
 
 function hideWildColorPicker(): void {
   wildColorPicker.style.display = 'none';
   pendingWildCard = null;
+  if (onWildPickerScroll) {
+    window.removeEventListener('scroll', onWildPickerScroll);
+    onWildPickerScroll = null;
+  }
+  if (wildPickerScrollY) {
+    window.scrollTo({ top: wildPickerScrollY, behavior: 'smooth' });
+    wildPickerScrollY = 0;
+  }
 }
 
 function updateDiscardPile(discardPile: Card[]): void {
@@ -1072,7 +1092,6 @@ colorOptions.addEventListener('click', (e: Event) => {
     const color = target.dataset.color!;
     if (pendingWildCard) {
       if (Array.isArray(pendingWildCard)) {
-        // Multiple wild cards
         sendMessage({
           action: 'play_multiple',
           cards: pendingWildCard.map(card => ({ ...card, color: color })),
@@ -1080,11 +1099,11 @@ colorOptions.addEventListener('click', (e: Event) => {
         });
         clearSelection();
       } else {
-        // Single wild card
         sendMessage({ action: 'play', card: { ...pendingWildCard, color: color } });
       }
-      hideWildColorPicker();
     }
+    wildPickerScrollY = 0;
+    hideWildColorPicker();
   }
 });
 
