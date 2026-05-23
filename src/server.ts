@@ -4,7 +4,7 @@ import { readFileSync, existsSync } from 'fs';
 import path from 'path';
 import { decideMove } from './aiplayer';
 import { ERR, errorResponse, ErrorCode } from './errors';
-import { RECONNECT_DEFER_MS, RECONNECT_DEADLINE_MS, DISCONNECT_REMOVE_MS, MAX_HAND_CARDS } from './constants';
+import { RECONNECT_DEFER_MS, RECONNECT_DEADLINE_MS, DISCONNECT_REMOVE_MS, MAX_HAND_CARDS, NAME_LENGTH_MIN, NAME_LENGTH_MAX } from './constants';
 
 const PKG = JSON.parse(readFileSync(path.join(__dirname, '..', 'package.json'), 'utf-8'));
 const VERSION = PKG.version || '1.0.0';
@@ -115,6 +115,14 @@ const httpServer = new Server((req: IncomingMessage, res: ServerResponse) => {
   if (isDev() && url === '/errors') {
     res.setHeader('Content-Type', 'application/json');
     return res.end(JSON.stringify(ERR));
+  }
+
+  if (isDev() && url === '/constants') {
+    res.setHeader('Content-Type', 'application/json');
+    return res.end(JSON.stringify({
+      NAME_LENGTH_MIN, NAME_LENGTH_MAX, MAX_HAND_CARDS,
+      RECONNECT_DEFER_MS, RECONNECT_DEADLINE_MS, DISCONNECT_REMOVE_MS,
+    }));
   }
 
   // Serve icon SVGs from /icons/ path or static icons directory
@@ -780,6 +788,10 @@ wss.on('connection', (ws: WebSocket, _req: IncomingMessage) => {
     if (!(message.action || '').startsWith('dev_')) {
       switch (message.action) {
         case 'join': {
+          if (typeof message.name !== 'string' || message.name.length < NAME_LENGTH_MIN || message.name.length > NAME_LENGTH_MAX) {
+            ws.send(JSON.stringify(errorResponse('INVALID_PLAYER_NAME')));
+            return;
+          }
           metadata.name = message.name;
           if (typeof message.lobbyId !== 'string' || !message.lobbyId.length) {
             ws.send(JSON.stringify(errorResponse('NEED_LOBBY_NAME')));
@@ -1095,9 +1107,27 @@ wss.on('connection', (ws: WebSocket, _req: IncomingMessage) => {
           if (!surrenderPlayer) return;
 
           const remaining = sLobby.players.filter(p => p.id !== metadata.id);
-          // 2-player room: surrender = opponent wins (original behavior)
-          if (remaining.length <= 1) {
-            const winner = remaining.find(p => !p.isAI) || remaining[0];
+          const realRemaining = remaining.filter(p => !p.isAI);
+          // No human players left → game ends with nobody winning
+          if (realRemaining.length === 0) {
+            if (surrenderPlayer.hand) sLobby.game.discardPile.push(...surrenderPlayer.hand);
+            const idx = sLobby.players.indexOf(surrenderPlayer);
+            sLobby.players.splice(idx, 1);
+            metadata.lobbyId = null;
+            sessions.delete(surrenderPlayer.id);
+            ws.send(JSON.stringify({ action: 'win', winner: '' }));
+            broadcastToLobby(metadata.lobbyId!, { action: 'win', winner: '' });
+            // Reset lobby state
+            for (const [, m] of clients) m.lobbyId === metadata.lobbyId && (m.lobbyId = null);
+            sLobby.players = [];
+            sLobby.game = { deck: [], discardPile: [], turn: 0, direction: 1, started: false, state: LobbyGameState.normal, drawingCount: 0 };
+            startedLobbies.delete(metadata.lobbyId!);
+            clearAllAITimeouts(metadata.lobbyId!);
+            return;
+          }
+          // Only 1 opponent real player → standard surrender, opponent wins
+          if (realRemaining.length <= 1 && remaining.length <= 1) {
+            const winner = realRemaining.find(p => !p.isAI) || remaining[0];
             if (winner) broadcastWin(metadata.lobbyId!, winner.name);
             return;
           }
@@ -1449,6 +1479,6 @@ process.on('SIGINT', () => {
   }
 });
 
-httpServer.on('listening', () => serverLog(`Server started on port ${PORT}`));
+httpServer.on('listening', () => serverLog(`Server started on port http://0.0.0.0:${PORT}`));
 httpServer.on('error', (e: Error) => { console.error(e); process.emit('SIGINT'); });
 httpServer.listen(PORT);

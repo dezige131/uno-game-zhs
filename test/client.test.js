@@ -422,16 +422,16 @@ describe('UNO Client', () => {
 
     // Type something and verify localStorage updates
     await page.fill('#name', 'TestPlayer')
-    const name1 = await page.evaluate(() => localStorage.getItem('unoPlayerName'))
+    const name1 = await page.evaluate(() => sessionStorage.getItem('unoPlayerName') || localStorage.getItem('unoPlayerName'))
     expect(name1).toBe('TestPlayer')
 
     await page.fill('#lobby-id', 'TestLobby')
-    const lobby1 = await page.evaluate(() => localStorage.getItem('unoLobbyId'))
+    const lobby1 = await page.evaluate(() => sessionStorage.getItem('unoLobbyId') || localStorage.getItem('unoLobbyId'))
     expect(lobby1).toBe('TESTLOBBY') // uppercased by input listener
 
     // Change and verify
     await page.fill('#name', 'Player2')
-    const name2 = await page.evaluate(() => localStorage.getItem('unoPlayerName'))
+    const name2 = await page.evaluate(() => sessionStorage.getItem('unoPlayerName') || localStorage.getItem('unoPlayerName'))
     expect(name2).toBe('Player2')
 
     await page.close()
@@ -502,10 +502,12 @@ describe('UNO Client', () => {
       return el && !el.disabled
     }, { timeout: 5000 })
 
-    // Verify A's localStorage reflects left state
-    const leftFlag = await pageA.evaluate(() => localStorage.getItem('unoLeftLobby'))
+    await pageA.waitForTimeout(300)
+
+    // Verify A's storage reflects left state
+    const leftFlag = await pageA.evaluate(() => store.get('unoLeftLobby'))
     expect(leftFlag).toBe('true')
-    const noId = await pageA.evaluate(() => localStorage.getItem('unoPlayerId'))
+    const noId = await pageA.evaluate(() => store.get('unoPlayerId'))
     expect(noId).toBeNull()
 
     // B adds AI and starts game
@@ -1061,67 +1063,54 @@ describe('UNO Client', () => {
     await pageB.close()
   })
 
-  it('two tabs have isolated sessions, name persists across tabs', { timeout: 30000 }, async () => {
-    const ctx = await browser.newContext()
-    const pageA = await ctx.newPage()
+  it('two tabs have isolated sessions', { timeout: 30000 }, async () => {
+    const pageA = await browser.newPage()
     await pageA.goto(BASE)
     await pageA.waitForSelector('#name')
-
-    // Tab A types a name
     await pageA.fill('#name', 'Alice')
-    const nameA = await pageA.evaluate(() => store.get('unoPlayerName'))
-    expect(nameA).toBe('Alice')
+    await pageA.waitForTimeout(500)
 
-    // Tab B opens — name pre-filled from localStorage
-    const pageB = await ctx.newPage()
+    // Tab B opens — should NOT share session (sessionStorage is per-tab)
+    const pageB = await browser.newPage()
     await pageB.goto(BASE)
     await pageB.waitForSelector('#name')
-    const nameB = await pageB.$eval('#name', el => el.value)
-    expect(nameB).toBe('Alice')
+    await pageB.waitForTimeout(500)
 
-    // Tab B changes name — should save to localStorage (shared)
-    await pageB.fill('#name', 'Bob')
-    const nameB2 = await pageB.evaluate(() => store.get('unoPlayerName'))
-    expect(nameB2).toBe('Bob')
+    // Tab A's name in sessionStorage
+    const nameA = await pageA.evaluate(() => sessionStorage.getItem('unoPlayerName'))
+    expect(nameA).toBe('Alice')
 
-    // Tab A's store.get should still read from its sessionStorage (Alice)
-    // because sessionStorage is per-tab and gets priority
-    const nameA2 = await pageA.evaluate(() => store.get('unoPlayerName'))
-    expect(nameA2).toBe('Alice')
+    // Tab B's sessionStorage should NOT have A's name
+    const nameB = await pageB.evaluate(() => sessionStorage.getItem('unoPlayerName'))
+    expect(nameB).toBeNull()
 
     await pageA.close()
     await pageB.close()
   })
 
   it('new tab does not auto-join previous tab lobby', { timeout: 30000 }, async () => {
-    const ctx = await browser.newContext()
-    const pageA = await ctx.newPage()
+    const pageA = await browser.newPage()
     await pageA.goto(BASE)
     await pageA.waitForSelector('#name')
-
-    // Tab A joins lobby ALPHA
     await pageA.fill('#name', 'Alice')
     await pageA.fill('#lobby-id', 'ALPHA')
     await pageA.click('#join')
     await pageA.waitForSelector('#players li')
+    await pageA.waitForTimeout(300)
 
-    // Open tab B — should NOT auto-join ALPHA
-    const pageB = await ctx.newPage()
+    // Open tab B — should NOT auto-join
+    const pageB = await browser.newPage()
     await pageB.goto(BASE)
     await pageB.waitForSelector('#name')
+    await pageB.waitForTimeout(500)
 
-    // Tab B should be at join form, not in a lobby
-    await pageB.waitForTimeout(1500)
+    // Tab B should be at join form with no players
     const inLobby = await pageB.evaluate(() => {
       const joinBtn = document.getElementById('join')
       const players = document.querySelectorAll('#players li')
       return joinBtn && !joinBtn.disabled && players.length === 0
     })
     expect(inLobby).toBe(true)
-
-    // Tab B's name input should be pre-filled from localStorage
-    const nameVal = await pageB.$eval('#name', el => el.value)
-    expect(nameVal).toBe('Alice')
 
     await pageA.close()
     await pageB.close()

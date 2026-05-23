@@ -5,3 +5,6 @@ export const DISCONNECT_REMOVE_MS = 15000;
 
 // Game limits
 export const MAX_HAND_CARDS = 100;
+
+export const NAME_LENGTH_MIN = 2
+export const NAME_LENGTH_MAX = 32

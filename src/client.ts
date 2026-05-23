@@ -68,7 +68,8 @@ interface ServerMessage {
   log?: object[];
 }
 
-// ── Multi-tab slot manager (BroadcastChannel) ────────────
+let NAME_LENGTH_MIN = 2;
+let NAME_LENGTH_MAX = 32;
 const CH_NAME = 'uno-game';
 let tabSlot = 0;
 
@@ -76,19 +77,18 @@ function slotKey(k: string): string { return `${k}-${tabSlot || 1}`; }
 
 const store = {
   get(k: string): string | null {
-    if (tabSlot) return localStorage.getItem(slotKey(k)) ?? sessionStorage.getItem(k);
-    return sessionStorage.getItem(k) ?? localStorage.getItem(k);
+    return sessionStorage.getItem(k)
+      ?? (tabSlot ? localStorage.getItem(slotKey(k)) : null)
+      ?? localStorage.getItem(k);
   },
   set(k: string, v: string): void {
-    if (tabSlot) {
-      localStorage.setItem(slotKey(k), v);
-      sessionStorage.setItem(k, v);
-    } else {
-      sessionStorage.setItem(k, v);
-    }
+    sessionStorage.setItem(k, v);
+    localStorage.setItem(k, v);
+    if (tabSlot) localStorage.setItem(slotKey(k), v);
   },
   remove(k: string): void {
     localStorage.removeItem(slotKey(k));
+    localStorage.removeItem(k);
     sessionStorage.removeItem(k);
   },
 };
@@ -275,6 +275,11 @@ function connect(): void {
     lobbyIdInput.disabled = false;
     nameInput.disabled = false;
     loadErrorDefs();
+    // Sync constants from server
+    fetch('/constants').then(r => r.json()).then(c => {
+      if (c.NAME_LENGTH_MIN) NAME_LENGTH_MIN = c.NAME_LENGTH_MIN;
+      if (c.NAME_LENGTH_MAX) NAME_LENGTH_MAX = c.NAME_LENGTH_MAX;
+    }).catch(() => {});
     const btn = document.getElementById('dev-disconnect-btn');
     if (btn) btn.textContent = '断开';
     const savedId = store.get('unoPlayerId');
@@ -1094,13 +1099,13 @@ joinButton.addEventListener('click', async () => {
     return;
   }
 
-  if (name.length < 2) {
+  if (name.length < NAME_LENGTH_MIN) {
     await showAlert('名称至少需要 2 个字符');
     return;
   }
 
-  if (name.length > 20) {
-    await showAlert('名称不能超过 20 个字符');
+  if (name.length > NAME_LENGTH_MAX) {
+    await showAlert(`名称不能超过 ${NAME_LENGTH_MAX} 个字符`);
     return;
   }
 
@@ -1440,6 +1445,17 @@ function showGameOver(winnerName: string): void {
   isGameOverShowing = true;
   store.remove('unoInLobby');
   store.remove('unoInGame');
+
+  // No human players left (AI-only game)
+  if (!winnerName) {
+    gameOverIcon.innerHTML = '<img src="/icons/bolt.svg" style="width:64px;height:64px;">';
+    gameOverTitle.textContent = '没有人赢了';
+    gameOverMessage.textContent = '所有真人玩家已离开对局';
+    gameOverContent.className = 'aborted';
+    gameOverOverlay.classList.remove('hidden');
+    gameOverOverlay.style.display = 'flex';
+    return;
+  }
 
   const myPlayer = players.find(p => p.id === myId);
   const isWinner = winnerName === (myPlayer ? myPlayer.name : '');
