@@ -31,6 +31,19 @@ pnpm start        # http://localhost:3000
 
 输出到 `release/`。
 
+## 发布新版本
+
+1. 安装 Github CLI
+2. 初始化 Github CLI
+```sh
+gh auth login  # 登录 GitHub
+gh repo set-default # 选择您的仓库
+```
+3. 运行发布新版本脚本
+```sh
+./release.sh
+```
+
 ## 开发
 
 ```bash
