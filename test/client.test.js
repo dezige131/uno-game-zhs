@@ -915,7 +915,7 @@ describe('UNO Client', () => {
     })
     expect(modalVisible).toBe(true)
     const modalMsg = await pageB.$eval('#modal-message', el => el.textContent)
-    expect(modalMsg).toContain('打破加牌')
+    expect(modalMsg).toContain('打破链式加牌')
     expect(modalMsg).toContain('张牌')
 
     // Click cancel on the modal to dismiss it
@@ -931,7 +931,7 @@ describe('UNO Client', () => {
     })
     expect(drawModalVisible).toBe(true)
     const drawModalMsg = await pageB.$eval('#modal-message', el => el.textContent)
-    expect(drawModalMsg).toContain('接受加牌')
+    expect(drawModalMsg).toContain('打破链式加牌')
     expect(drawModalMsg).toContain('张牌')
 
     await pageA.close()

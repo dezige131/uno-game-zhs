@@ -909,7 +909,7 @@ async function handleCardClick(card: Card, cardIndex: number, hand: Card[]): Pro
     } else {
       // In drawing chain state, confirm before breaking with non-draw2/wild4
       if (gameState === 1 && card.type !== 'draw2' && card.type !== 'wild4') {
-        const ok = await showConfirm(`确定要打破加牌吗？\n目前需要抽 ${drawingChain} 张牌`);
+        const ok = await showConfirm(`确定要打破链式加牌吗？\n你将抽 ${drawingChain} 张牌`);
         if (!ok) return;
       }
       sendMessage({ action: 'play', card: card });
@@ -1178,7 +1178,7 @@ readyButton.addEventListener('click', () => {
 
 drawCardButton.addEventListener('click', async () => {
   if (gameState === 1 && drawingChain > 0) {
-    const ok = await showConfirm(`确定要接受加牌吗？\n你将抽 ${drawingChain} 张牌`);
+    const ok = await showConfirm(`确定要打破链式加牌吗？\n你将抽 ${drawingChain} 张牌`);
     if (!ok) return;
   }
   sendMessage({ action: 'draw' });
