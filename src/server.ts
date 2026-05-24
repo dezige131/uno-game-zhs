@@ -82,7 +82,11 @@ interface ClientMessage {
 type StaticFile = [string, string];
 
 const allowFiles: StaticFile[] = [['index.html', 'text/html'], ['client.js', 'text/javascript'], ['style.css', 'text/css']];
-const files: Record<string, { content: Buffer; type: string }> = {};
+// Use a null-prototype object so the `in` operator never matches Object.prototype
+// keys like __proto__, constructor, toString. Without this, GET /__proto__ falls
+// into the static-file branch with a destructured `type` of `undefined`, which
+// then crashes the server via res.setHeader('Content-Type', undefined).
+const files: Record<string, { content: Buffer; type: string }> = Object.create(null);
 
 const PROJECT_ROOT = path.resolve(__dirname, '..');
 
